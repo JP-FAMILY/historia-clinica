@@ -172,6 +172,10 @@ aside{position:sticky;top:calc(var(--toph,62px) + 22px);align-self:start;max-hei
 .upt small{color:var(--muted);font-size:11.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .upin{flex:none;font-size:11px;color:var(--accent);font-weight:700}
 .upnone{font-size:12.5px;color:var(--muted);padding:6px 4px 8px}
+.upd.appt{background:var(--accent-2)}
+.upd.appt b{color:var(--accent)}
+.btn.addappt{width:100%;margin:8px 0 4px;border-style:dashed;color:var(--accent)}
+.apptnote{font-size:12.5px;color:var(--muted);background:var(--chip);border-radius:9px;padding:8px 10px;margin:0}
 /* Ficha: botones de listas y tarjetas */
 .pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
 .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--chip);border-radius:10px;padding:9px 14px;cursor:pointer;font-weight:600;font-size:14px}
@@ -279,7 +283,8 @@ const FILE_KEYS=['id','visitId','memberId','category','name','mime','size','adde
 const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 
 /* ---------- Estado y utilidades ---------- */
-const S={members:[],visits:[],files:[],blobs:new Map(),tombs:{},sel:'all',q:'',spec:'',open:new Set()};
+const S={members:[],visits:[],files:[],appts:[],blobs:new Map(),tombs:{},sel:'all',q:'',spec:'',open:new Set()};
+const COLL=['members','visits','files','appts'];
 const AUTH={appKey:DEFAULT_APP_KEY,refresh:'',access:'',exp:0,account:null};
 const SYNC={state:'off',msg:'',last:0,rev:''};
 let db=null, draft=null, pendingCat='Informe', changeN=0;
@@ -315,10 +320,10 @@ function getList(m,kind){
 
 /* ---------- IndexedDB ---------- */
 function openDB(){return new Promise((res,rej)=>{
-  const r=indexedDB.open(APP_ID,2);
+  const r=indexedDB.open(APP_ID,3);
   r.onupgradeneeded=e=>{
     const d=r.result,t=r.transaction;
-    for(const s of ['members','visits','files','blobs'])if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'});
+    for(const s of ['members','visits','files','blobs','appts'])if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'});
     if(!d.objectStoreNames.contains('meta'))d.createObjectStore('meta');
     if(e.oldVersion===1){ // migración desde la primera versión: separar los archivos de sus datos
       const fs=t.objectStore('files'),bs=t.objectStore('blobs');
@@ -417,15 +422,15 @@ function setSync(state,msg=''){SYNC.state=state;SYNC.msg=msg;renderSync();if($('
 const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
 function canon(d){ // forma normalizada para comparar local y remoto
   const sortId=a=>(a||[]).slice().sort((x,y)=>x.id<y.id?-1:x.id>y.id?1:0);
-  return stable({members:sortId(d.members),visits:sortId(d.visits),files:sortId(d.files).map(f=>{const o={};FILE_KEYS.forEach(k=>{if(f[k]!==undefined)o[k]=f[k]});return o}),tombs:d.tombs||{}});
+  return stable({members:sortId(d.members),visits:sortId(d.visits),appts:sortId(d.appts),files:sortId(d.files).map(f=>{const o={};FILE_KEYS.forEach(k=>{if(f[k]!==undefined)o[k]=f[k]});return o}),tombs:d.tombs||{}});
 }
-const localRemoteView=()=>({members:S.members,visits:S.visits,files:S.files.filter(f=>f.uploaded&&f.path).map(f=>{const o=fileRec(f);delete o.uploaded;return o}),tombs:S.tombs});
+const localRemoteView=()=>({members:S.members,visits:S.visits,appts:S.appts,files:S.files.filter(f=>f.uploaded&&f.path).map(f=>{const o=fileRec(f);delete o.uploaded;return o}),tombs:S.tombs});
 async function applyRemote(remote){
   if(!remote)return false;
   let changed=false;
   for(const [id,ts] of Object.entries(remote.tombs||{}))if(!(S.tombs[id]>=ts)){S.tombs[id]=ts;changed=true}
-  const puts={members:[],visits:[],files:[]},dels={members:[],visits:[],files:[]};
-  for(const k of ['members','visits','files']){
+  const puts={members:[],visits:[],files:[],appts:[]},dels={members:[],visits:[],files:[],appts:[]};
+  for(const k of COLL){
     const map=new Map(S[k].map(x=>[x.id,x]));
     for(const r of remote[k]||[]){
       if(S.tombs[r.id]>=(r.updated||0))continue;
@@ -436,7 +441,7 @@ async function applyRemote(remote){
     S[k]=[...map.values()];
   }
   dels.files.forEach(id=>S.blobs.delete(id));
-  for(const k of ['members','visits','files']){await putMany(k,puts[k]);await delMany(k,dels[k])}
+  for(const k of COLL){await putMany(k,puts[k]);await delMany(k,dels[k])}
   await delMany('blobs',dels.files);await setMeta('tombs',S.tombs);
   return changed;
 }
@@ -536,9 +541,9 @@ function renderSide(){
 }
 function renderCal(){
   const t=today(),el=$('#cal');if(!el)return;
-  const appts=S.visits.filter(v=>v.nextAppointment&&S.members.some(m=>m.id===v.memberId));
-  const byDay={};appts.forEach(v=>(byDay[v.nextAppointment]=byDay[v.nextAppointment]||[]).push(v));
-  const upcoming=appts.filter(v=>v.nextAppointment>=t).sort((a,b)=>a.nextAppointment.localeCompare(b.nextAppointment));
+  const appts=allAppts();
+  const byDay={};appts.forEach(a=>(byDay[a.date]=byDay[a.date]||[]).push(a));
+  const upcoming=appts.filter(a=>a.date>=t);
   $('#calCnt').textContent=upcoming.length;
   const first=new Date(CAL.y,CAL.m,1),start=(first.getDay()+6)%7,dim=new Date(CAL.y,CAL.m+1,0).getDate();
   let g=['L','M','X','J','V','S','D'].map(d=>`<span class="wd">${d}</span>`).join('');
@@ -549,12 +554,20 @@ function renderCal(){
     g+=has?`<button class="${cls}" data-act="calDay" data-id="${ds}" title="${has.length} cita(s)">${dt.getDate()}</button>`:`<span class="${cls}">${dt.getDate()}</span>`;
   }
   const list=CAL.day?(byDay[CAL.day]||[]):upcoming.slice(0,12);
-  const item=v=>{const mm=S.members.find(x=>x.id===v.memberId),[y,mo,d]=v.nextAppointment.split('-'),n=daysBetween(t,v.nextAppointment);
-    return `<button class="upi" data-act="goAppt" data-id="${esc(v.id)}"><span class="upd"><b>${+d}</b><span>${MONTHS[+mo-1]}</span></span><span class="upt"><b>${esc(mm?mm.name:'')}</b><small>${esc([v.specialty,v.center].filter(Boolean).join(' · '))}</small></span>${n>=0?`<span class="upin">${n===0?'Hoy':n===1?'Mañana':n+' d'}</span>`:''}</button>`};
+  const item=a=>{const mm=S.members.find(x=>x.id===a.memberId),[y,mo,d]=a.date.split('-'),n=daysBetween(t,a.date);
+    return `<button class="upi" data-act="${a.src==='appt'?'editAppt':'goAppt'}" data-id="${esc(a.id)}" title="${a.src==='appt'?'Cita':'Revisión indicada en una visita'}"><span class="upd ${a.src}"><b>${+d}</b><span>${MONTHS[+mo-1]}</span></span><span class="upt"><b>${esc(mm?mm.name:'')}${a.time?` · ${esc(a.time)}`:''}</b><small>${esc([a.specialty,a.center].filter(Boolean).join(' · '))}${a.src==='visit'?' · revisión':''}</small></span>${n>=0?`<span class="upin">${n===0?'Hoy':n===1?'Mañana':n+' d'}</span>`:''}</button>`};
   el.innerHTML=`<div class="calh"><button data-act="calPrev" aria-label="Mes anterior">‹</button><span>${MONTHS_L[CAL.m]} ${CAL.y}</span><button data-act="calNext" aria-label="Mes siguiente">›</button></div>
   <div class="calg">${g}</div>
   <div class="uph"><span>${CAL.day?fmt(CAL.day):'Próximas'}</span>${CAL.day?'<button data-act="calAll">Ver todas</button>':''}</div>
-  <div class="upl">${list.length?list.map(item).join(''):`<div class="upnone">${CAL.day?'Sin citas ese día.':'No hay citas próximas. Se añaden con el campo «Próxima cita» de cada visita.'}</div>`}${!CAL.day&&upcoming.length>12?`<div class="upnone">y ${upcoming.length-12} más…</div>`:''}</div>`;
+  <div class="upl">${list.length?list.map(item).join(''):`<div class="upnone">${CAL.day?'Sin citas ese día.':'No hay citas próximas.'}</div>`}${!CAL.day&&upcoming.length>12?`<div class="upnone">y ${upcoming.length-12} más…</div>`:''}</div>
+  <button class="btn sm addappt" data-act="addAppt" data-id="${esc(CAL.day||'')}">+ Nueva cita${CAL.day?' el '+fmt(CAL.day):''}</button>`;
+}
+/* Citas: las creadas directamente + las "próxima cita" de las visitas */
+function allAppts(){
+  const ok=id=>S.members.some(m=>m.id===id);
+  const a=S.appts.filter(x=>x.date&&ok(x.memberId)).map(x=>({...x,src:'appt'}));
+  const b=S.visits.filter(v=>v.nextAppointment&&ok(v.memberId)).map(v=>({id:v.id,memberId:v.memberId,date:v.nextAppointment,time:'',specialty:v.specialty,center:v.center,doctor:v.doctor,src:'visit'}));
+  return a.concat(b).sort((x,y)=>x.date.localeCompare(y.date)||(x.time||'99').localeCompare(y.time||'99'));
 }
 function renderMain(){
   const main=$('#main');
@@ -583,7 +596,7 @@ function renderMain(){
   }else{
     h+=`<section class="card"><div class="ph"><div><h1>Toda la familia</h1><p class="muted">${S.members.length} familiar${S.members.length===1?'':'es'} · ${vis.length} visitas · ${nDocs} documentos</p></div></div></section>`;
   }
-  h+=`<div class="tools"><input id="q" type="search" placeholder="Buscar médico, diagnóstico, medicación…" value="${esc(S.q)}"><select id="spec"><option value="">Todas las especialidades</option>${specs.map(s=>`<option ${s===S.spec?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select><button class="btn primary" data-act="addVisit">+ Nueva visita</button></div><div id="visitList"></div>`;
+  h+=`<div class="tools"><input id="q" type="search" placeholder="Buscar médico, diagnóstico, medicación…" value="${esc(S.q)}"><select id="spec"><option value="">Todas las especialidades</option>${specs.map(s=>`<option ${s===S.spec?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select><button class="btn" data-act="addAppt">+ Nueva cita</button><button class="btn primary" data-act="addVisit">+ Nueva visita</button></div><div id="visitList"></div>`;
   const q=document.activeElement&&document.activeElement.id==='q';
   main.innerHTML=h;
   if(q){const i=$('#q');i.focus();i.setSelectionRange(i.value.length,i.value.length)}
@@ -656,10 +669,30 @@ function memberModal(id){
     <datalist id="dl-rel">${opts(RELS)}</datalist></div>
   <footer class="mf">${id?`<button type="button" class="btn ghost danger" data-act="delMember" data-id="${esc(id)}">Eliminar familiar</button>`:''}<span class="sp"></span><button type="button" class="btn" data-act="closeModal">Cancelar</button><button class="btn primary" type="submit">Guardar</button></footer></form>`);
 }
-function visitModal(id){
-  const v=id?S.visits.find(x=>x.id===id):{memberId:S.sel!=='all'?S.sel:(S.members.length===1?S.members[0].id:''),date:today()};
+function apptModal(id,day){
+  const a=id?S.appts.find(x=>x.id===id):{memberId:S.sel!=='all'?S.sel:(S.members.length===1?S.members[0].id:''),date:day||''};
+  if(!a)return;
+  const val=k=>esc(a[k]||'');
+  openModal(`<form id="af" data-id="${esc(id||'')}"><header class="mh"><h2>${id?'Editar cita':'Nueva cita'}</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
+  <div class="mb"><div class="g2">
+    <label>Familiar *<select name="memberId" required>${a.memberId?'':'<option value="">Elige…</option>'}${S.members.slice().sort((x,y)=>byName(x.name,y.name)).map(m=>`<option value="${esc(m.id)}" ${m.id===a.memberId?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>
+    <label>Especialidad *<input name="specialty" list="dl-spec" required value="${val('specialty')}" autocomplete="off" placeholder="Ej. Cardiología"></label>
+    <label>Fecha *<input type="date" name="date" required value="${val('date')}"></label>
+    <label>Hora<input type="time" name="time" value="${val('time')}"></label>
+    <label>Médico/a<input name="doctor" list="dl-doc" value="${val('doctor')}" autocomplete="off"></label>
+    <label>Centro / hospital<input name="center" list="dl-center" value="${val('center')}" autocomplete="off"></label></div>
+    <label>Motivo<textarea name="reason" rows="2" placeholder="Ej. Revisión anual, resultados de análisis…">${val('reason')}</textarea></label>
+    <label>Notas / qué llevar<textarea name="notes" rows="2" placeholder="Ej. Ir en ayunas, llevar informe anterior…">${val('notes')}</textarea></label>
+    ${id?'<p class="apptnote">Cuando hayas ido a la cita, pulsa <b>Registrar como visita</b>: se creará la visita con estos datos para que añadas el diagnóstico y los informes, y la cita desaparecerá del calendario.</p>':''}
+    <datalist id="dl-spec">${opts([...new Set([...uniqField('specialty'),...SPECS])])}</datalist>
+    <datalist id="dl-doc">${opts(uniqField('doctor'))}</datalist>
+    <datalist id="dl-center">${opts(uniqField('center'))}</datalist></div>
+  <footer class="mf">${id?`<button type="button" class="btn ghost danger" data-act="delAppt" data-id="${esc(id)}">Eliminar</button><button type="button" class="btn" data-act="apptToVisit" data-id="${esc(id)}">Registrar como visita</button>`:''}<span class="sp"></span><button type="button" class="btn" data-act="closeModal">Cancelar</button><button class="btn primary" type="submit">Guardar cita</button></footer></form>`);
+}
+function visitModal(id,prefill,fromAppt){
+  const v=id?S.visits.find(x=>x.id===id):(prefill||{memberId:S.sel!=='all'?S.sel:(S.members.length===1?S.members[0].id:''),date:today()});
   if(!v)return;
-  draft={id:id||uid(),docs:id?S.files.filter(f=>f.visitId===id).map(f=>({...f})):[],removed:[]};
+  draft={id:id||uid(),docs:id?S.files.filter(f=>f.visitId===id).map(f=>({...f})):[],removed:[],fromAppt:fromAppt||null};
   const val=k=>esc(v[k]||'');
   openModal(`<form id="vf"><header class="mh"><h2>${id?'Editar visita':'Nueva visita'}</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
   <div class="mb"><div class="g2">
@@ -785,11 +818,29 @@ async function saveVisit(form){
     await putMany('files',recs);
     if(draft.removed.length)await tombstone('files',draft.removed);
   }catch(e){alert('No se pudo guardar: '+errMsg(e));btn.disabled=false;btn.textContent='Guardar visita';return}
+  if(draft.fromAppt)await deleteAppt(draft.fromAppt,true);
   newBlobs.forEach(b=>S.blobs.set(b.id,b.blob));
   S.visits=S.visits.filter(x=>x.id!==rec.id).concat(rec);
   S.files=S.files.filter(f=>f.visitId!==rec.id&&!draft.removed.includes(f.id)).concat(recs);
   if(S.sel!=='all')S.sel=rec.memberId;
   S.open.add(rec.id);closeModal();markChange();render();toast(ex?'Visita actualizada':'Visita guardada');
+}
+async function saveAppt(form){
+  const fd=Object.fromEntries(new FormData(form));for(const k in fd)fd[k]=String(fd[k]).trim();
+  if(!fd.memberId||!fd.date||!fd.specialty)return;
+  const id=form.dataset.id||uid(),ex=S.appts.find(x=>x.id===id),now=Date.now();
+  const rec={...(ex||{}),...fd,id,created:ex?ex.created:now,updated:now};
+  try{await putMany('appts',[rec])}catch(e){alert('No se pudo guardar: '+errMsg(e));return}
+  S.appts=S.appts.filter(x=>x.id!==id).concat(rec);
+  const [y,m]=rec.date.split('-').map(Number);CAL.y=y;CAL.m=m-1;
+  closeModal();markChange();render();toast(ex?'Cita actualizada':'Cita guardada');
+}
+async function deleteAppt(id,silent){
+  const a=S.appts.find(x=>x.id===id);if(!a)return;
+  if(!silent&&!confirm(`¿Eliminar la cita de ${a.specialty} del ${fmt(a.date)}?`))return;
+  try{await tombstone('appts',[id])}catch(e){alert(errMsg(e));return}
+  S.appts=S.appts.filter(x=>x.id!==id);
+  if(!silent){closeModal();markChange();render();toast('Cita eliminada')}
 }
 async function deleteVisit(id){
   const v=S.visits.find(x=>x.id===id);if(!v)return;
@@ -802,7 +853,8 @@ async function deleteMember(id){
   const m=S.members.find(x=>x.id===id);if(!m)return;
   const vs=S.visits.filter(v=>v.memberId===id),vids=new Set(vs.map(v=>v.id)),fs=S.files.filter(f=>vids.has(f.visitId));
   if(!confirm(`¿Eliminar a ${m.name} junto con ${vs.length} visita(s) y ${fs.length} documento(s)?\nSe borrará también en tus otros dispositivos y en Dropbox. No se puede deshacer.`))return;
-  try{await tombstone('files',fs.map(f=>f.id));await tombstone('visits',vs.map(v=>v.id));await tombstone('members',[id])}catch(e){alert(errMsg(e));return}
+  try{await tombstone('files',fs.map(f=>f.id));await tombstone('visits',vs.map(v=>v.id));await tombstone('appts',S.appts.filter(a=>a.memberId===id).map(a=>a.id));await tombstone('members',[id])}catch(e){alert(errMsg(e));return}
+  S.appts=S.appts.filter(a=>a.memberId!==id);
   S.files=S.files.filter(f=>!vids.has(f.visitId));S.visits=S.visits.filter(v=>v.memberId!==id);S.members=S.members.filter(x=>x.id!==id);S.sel='all';
   closeModal();markChange();render();toast('Familiar eliminado');
 }
@@ -905,7 +957,7 @@ async function doExport(){
       used.add(path.toLowerCase());pathOf[f.id]=path;
       entries.push({path,data:new Uint8Array(await S.blobs.get(f.id).arrayBuffer())});
     }
-    const data={app:APP_ID,version:2,exportedAt:new Date().toISOString(),members:S.members,visits:S.visits,tombs:S.tombs,
+    const data={app:APP_ID,version:2,exportedAt:new Date().toISOString(),members:S.members,visits:S.visits,appts:S.appts,tombs:S.tombs,
       files:files.map(f=>{const o=fileRec(f);delete o.uploaded;o.zipPath=pathOf[f.id];return o})};
     entries.unshift({path:'Resumen.html',data:enc.encode(buildSummary(pathOf,'Los enlaces a documentos funcionan tras descomprimir el ZIP.'))});
     entries.unshift({path:ZIP_DATA,data:enc.encode(JSON.stringify(data,null,1))});
@@ -920,6 +972,8 @@ function buildSummary(pathOf,linkNote){
   for(const m of S.members.slice().sort((a,b)=>byName(a.name,b.name))){
     const vs=S.visits.filter(v=>v.memberId===m.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     rows.push(`<h2>${esc(m.name)}${m.relation?` <small>(${esc(m.relation)})</small>`:''}</h2><dl class="p">${fld('Fecha de nacimiento',fmt(m.birthdate))}${fld('Grupo sanguíneo',m.blood)}${['allergies','conds','meds'].map(k=>fld(KINDS[k].title,getList(m,k).map(it=>'• '+[it.name,it.detail,it.notes].filter(Boolean).join(' — ')).join('\n'))).join('')}${CARDS.map(c=>fld(c.l,m[c.k]?m[c.k]+(c.exp&&m[c.exp]?' (caduca '+fmt(m[c.exp])+')':''):'')).join('')}${fld('Otra tarjeta / seguro',m.insurance)}${fld('Notas',m.notes)}</dl>`);
+    const ap=allAppts().filter(a=>a.memberId===m.id&&a.date>=today());
+    if(ap.length)rows.push(`<div class="v"><div class="h">Próximas citas</div><ul>${ap.map(a=>`<li>${fmt(a.date)}${a.time?' '+esc(a.time):''} · ${esc(a.specialty)}${a.doctor?' · '+esc(a.doctor):''}${a.center?' · '+esc(a.center):''}${a.reason?' — '+esc(a.reason):''}</li>`).join('')}</ul></div>`);
     if(!vs.length)rows.push('<p class="m">Sin visitas registradas.</p>');
     for(const v of vs){
       const docs=S.files.filter(f=>f.visitId===v.id);
@@ -938,8 +992,8 @@ async function doImport(file){
     if(data.app!==APP_ID||!Array.isArray(data.members))throw new Error('El archivo no es una copia de esta app.');
     const when=data.exportedAt?new Date(data.exportedAt).toLocaleString('es-ES'):'fecha desconocida';
     if(!confirm(`Importar la copia del ${when}:\n${data.members.length} familiares, ${(data.visits||[]).length} visitas, ${(data.files||[]).length} documentos.\n\nSe añadirá lo que falte y se actualizará lo que sea más reciente en la copia. No se borra nada de lo actual.\n\n¿Continuar?`))return;
-    let missing=0,added=0;const newBlobs=[],put={members:[],visits:[],files:[]};
-    for(const k of ['members','visits']){
+    let missing=0,added=0;const newBlobs=[],put={members:[],visits:[],files:[],appts:[]};
+    for(const k of ['members','visits','appts']){
       for(const r of data[k]||[]){const l=S[k].find(x=>x.id===r.id);const rec={...r,updated:r.updated||1};if(S.tombs[r.id]>=rec.updated)continue;if(!l||rec.updated>(l.updated||0)){put[k].push(rec);added++}}
     }
     for(const f of data.files||[]){
@@ -951,9 +1005,9 @@ async function doImport(file){
       put.files.push(rec);newBlobs.push({id:f.id,blob:new Blob([u],{type:f.mime||'application/octet-stream'})});added++;
     }
     await putMany('blobs',newBlobs);
-    for(const k of ['members','visits','files'])await putMany(k,put[k]);
+    for(const k of COLL)await putMany(k,put[k]);
     newBlobs.forEach(b=>S.blobs.set(b.id,b.blob));
-    for(const k of ['members','visits','files']){const ids=new Set(put[k].map(x=>x.id));S[k]=S[k].filter(x=>!ids.has(x.id)).concat(put[k])}
+    for(const k of COLL){const ids=new Set(put[k].map(x=>x.id));S[k]=S[k].filter(x=>!ids.has(x.id)).concat(put[k])}
     S.sel='all';S.q='';S.spec='';
     markChange();render();if($('#setBody'))renderSettings();
     toast(added?`Importado: ${added} elemento(s) nuevos o actualizados.`:'No había nada nuevo que importar.',4500);
@@ -981,6 +1035,14 @@ const actions={
   rmDraft:id=>{const d=draft.docs.find(x=>x.id===id);if(!d)return;draft.docs=draft.docs.filter(x=>x.id!==id);if(!d.isNew)draft.removed.push(id);renderDraft()},
   settings:()=>settingsModal(),
   syncNow:()=>sync(true),
+  addAppt:day=>apptModal(null,day||''),
+  editAppt:id=>apptModal(id),
+  delAppt:id=>deleteAppt(id),
+  apptToVisit:id=>{
+    const a=S.appts.find(x=>x.id===id);if(!a)return;
+    closeModal();
+    visitModal(null,{memberId:a.memberId,date:a.date,specialty:a.specialty,doctor:a.doctor,center:a.center,reason:a.reason,notes:a.notes},id);
+  },
   openList:id=>{const [mid,kind]=id.split('|');listModal(mid,kind)},
   listEditItem:id=>{listEdit.itemId=id;renderListModal();const i=$('#lf [name=name]');if(i){if(i.scrollIntoView)i.scrollIntoView({block:'center'});if(!IOS)i.focus()}},
   listCancel:()=>{listEdit.itemId=null;renderListModal()},
@@ -1025,7 +1087,7 @@ const actions={
 };
 document.addEventListener('click',e=>{const s=e.target.closest('#calBox>summary');if(s&&window.innerWidth>760)e.preventDefault()},true);
 document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(!a)return;const fn=actions[a.dataset.act];if(fn){e.preventDefault();fn(a.dataset.id,a)}});
-document.addEventListener('submit',e=>{e.preventDefault();if(e.target.id==='mf')saveMember(e.target);else if(e.target.id==='vf')saveVisit(e.target);else if(e.target.id==='lf')submitListItem(e.target)});
+document.addEventListener('submit',e=>{e.preventDefault();if(e.target.id==='mf')saveMember(e.target);else if(e.target.id==='vf')saveVisit(e.target);else if(e.target.id==='lf')submitListItem(e.target);else if(e.target.id==='af')saveAppt(e.target)});
 document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value.trim();renderList()}});
 document.addEventListener('change',e=>{
   const t=e.target;
@@ -1039,7 +1101,7 @@ let lastVis=0;
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&AUTH.refresh&&Date.now()-lastVis>15000){lastVis=Date.now();sync(false)}});
 window.addEventListener('online',()=>{if(AUTH.refresh)sync(false)});
 window.addEventListener('offline',()=>{if(AUTH.refresh)setSync('pending','Sin conexión')});
-setInterval(()=>{if(document.visibilityState==='visible'&&AUTH.refresh&&!$('#vf')&&!$('#mf'))sync(false)},60000);
+setInterval(()=>{if(document.visibilityState==='visible'&&AUTH.refresh&&!$('#vf')&&!$('#mf')&&!$('#af'))sync(false)},60000);
 const setTopH=()=>document.documentElement.style.setProperty('--toph',$('.top').offsetHeight+'px');
 window.addEventListener('resize',setTopH);setTopH();
 if(window.innerWidth<=760)$('#calBox').open=false;
@@ -1051,8 +1113,8 @@ if(window.innerWidth<=760)$('#calBox').open=false;
   try{
     if(!window.indexedDB)throw new Error('Este navegador no permite guardar datos.');
     db=await openDB();
-    const [members,visits,files,blobs,tombs,auth,info]=await Promise.all([getAll('members'),getAll('visits'),getAll('files'),getAll('blobs'),getMeta('tombs'),getMeta('auth'),getMeta('syncInfo')]);
-    S.members=members;S.visits=visits;S.files=files;S.tombs=tombs||{};
+    const [members,visits,files,blobs,tombs,auth,info,appts]=await Promise.all([getAll('members'),getAll('visits'),getAll('files'),getAll('blobs'),getMeta('tombs'),getMeta('auth'),getMeta('syncInfo'),getAll('appts')]);
+    S.members=members;S.visits=visits;S.files=files;S.appts=appts;S.tombs=tombs||{};
     blobs.forEach(b=>S.blobs.set(b.id,b.blob));
     if(auth)Object.assign(AUTH,auth);
     if(!AUTH.appKey)AUTH.appKey=DEFAULT_APP_KEY;
