@@ -172,6 +172,22 @@ aside{position:sticky;top:calc(var(--toph,62px) + 22px);align-self:start;max-hei
 .upt small{color:var(--muted);font-size:11.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .upin{flex:none;font-size:11px;color:var(--accent);font-weight:700}
 .upnone{font-size:12.5px;color:var(--muted);padding:6px 4px 8px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel);flex:none}
+.seg button{border:0;background:none;padding:8px 14px;font-weight:600;cursor:pointer;color:var(--muted);font-size:14px}
+.seg button.on{background:var(--accent);color:#fff}
+.catbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.catf{border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:var(--panel);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--c)}
+.catf.on{background:var(--c);color:#fff;border-color:var(--c)}
+.catf .n{opacity:.8;margin-left:3px}
+.catf:disabled{opacity:.4;cursor:default}
+.drow{background:var(--panel);box-shadow:var(--shadow);padding:10px 12px}
+.ddate{flex:none;width:58px;text-align:center;border-right:1px solid var(--line);padding-right:10px}
+.ddate b{display:block;font-size:18px;line-height:1}
+.ddate span{font-size:11px;color:var(--muted);text-transform:uppercase}
+.dinfo{flex:1 1 180px;min-width:0;display:flex;flex-direction:column}
+.dinfo .dn{flex:none}
+.dinfo small{color:var(--muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dacts{display:flex;gap:6px;flex:none}
 .upd.appt{background:var(--accent-2)}
 .upd.appt b{color:var(--accent)}
 .btn.addappt{width:100%;margin:8px 0 4px;border-style:dashed;color:var(--accent)}
@@ -283,7 +299,7 @@ const FILE_KEYS=['id','visitId','memberId','category','name','mime','size','adde
 const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 
 /* ---------- Estado y utilidades ---------- */
-const S={members:[],visits:[],files:[],appts:[],blobs:new Map(),tombs:{},sel:'all',q:'',spec:'',open:new Set()};
+const S={members:[],visits:[],files:[],appts:[],blobs:new Map(),tombs:{},sel:'all',q:'',spec:'',open:new Set(),view:'visits',cat:''};
 const COLL=['members','visits','files','appts'];
 const AUTH={appKey:DEFAULT_APP_KEY,refresh:'',access:'',exp:0,account:null};
 const SYNC={state:'off',msg:'',last:0,rev:''};
@@ -596,7 +612,7 @@ function renderMain(){
   }else{
     h+=`<section class="card"><div class="ph"><div><h1>Toda la familia</h1><p class="muted">${S.members.length} familiar${S.members.length===1?'':'es'} · ${vis.length} visitas · ${nDocs} documentos</p></div></div></section>`;
   }
-  h+=`<div class="tools"><input id="q" type="search" placeholder="Buscar médico, diagnóstico, medicación…" value="${esc(S.q)}"><select id="spec"><option value="">Todas las especialidades</option>${specs.map(s=>`<option ${s===S.spec?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select><button class="btn" data-act="addAppt">+ Nueva cita</button><button class="btn primary" data-act="addVisit">+ Nueva visita</button></div><div id="visitList"></div>`;
+  h+=`<div class="tools"><div class="seg" role="tablist"><button class="${S.view==='visits'?'on':''}" data-act="view" data-id="visits">Visitas</button><button class="${S.view==='docs'?'on':''}" data-act="view" data-id="docs">Documentos</button></div><input id="q" type="search" placeholder="${S.view==='docs'?'Buscar documento, especialidad, médico…':'Buscar médico, diagnóstico, medicación…'}" value="${esc(S.q)}"><select id="spec"><option value="">Todas las especialidades</option>${specs.map(s=>`<option ${s===S.spec?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select><button class="btn" data-act="addAppt">+ Nueva cita</button><button class="btn primary" data-act="addVisit">+ Nueva visita</button></div><div id="visitList"></div>`;
   const q=document.activeElement&&document.activeElement.id==='q';
   main.innerHTML=h;
   if(q){const i=$('#q');i.focus();i.setSelectionRange(i.value.length,i.value.length)}
@@ -609,8 +625,23 @@ function matches(v){
   const mm=S.members.find(x=>x.id===v.memberId);
   return [v.specialty,v.doctor,v.center,v.reason,v.diagnosis,v.treatment,v.notes,docs,mm&&mm.name].join(' ').toLowerCase().includes(q);
 }
+function renderDocs(el){
+  const m=S.sel==='all'?null:S.sel,q=S.q.toLowerCase();
+  const vBy=Object.fromEntries(S.visits.map(v=>[v.id,v]));
+  const base=S.files.filter(f=>{const v=vBy[f.visitId];if(!v||(m&&v.memberId!==m)||(S.spec&&v.specialty!==S.spec))return false;
+    if(!q)return true;const mm=S.members.find(x=>x.id===v.memberId);
+    return [f.name,f.category,v.specialty,v.doctor,v.center,v.reason,v.diagnosis,mm&&mm.name].join(' ').toLowerCase().includes(q)});
+  const cnt=k=>base.filter(f=>f.category===k).length;
+  const list=base.filter(f=>!S.cat||f.category===S.cat).sort((a,b)=>(vBy[b.visitId].date||'').localeCompare(vBy[a.visitId].date||'')||byName(a.name,b.name));
+  let h=`<div class="catbar"><button class="catf ${!S.cat?'on':''}" style="--c:var(--accent)" data-act="cat" data-id="">Todos<span class="n">${base.length}</span></button>${CATS.map(c=>{const n=cnt(c.k);return `<button class="catf ${S.cat===c.k?'on':''}" style="--c:${c.c}" data-act="cat" data-id="${esc(c.k)}" ${n||S.cat===c.k?'':'disabled'}>${esc(c.k)}<span class="n">${n}</span></button>`}).join('')}</div>`;
+  if(!list.length){el.innerHTML=h+`<div class="nores">${S.files.length?'No hay documentos con estos filtros.':'Todavía no hay documentos. Se añaden dentro de cada visita.'}</div>`;return}
+  h+=list.map(f=>{const v=vBy[f.visitId],mm=S.members.find(x=>x.id===v.memberId),[yy,mo,dd]=(v.date||'--').split('-');
+    return `<div class="doc drow"><span class="ddate"><b>${esc(dd||'–')}</b><span>${mo?MONTHS[+mo-1]:''} ${esc(yy||'')}</span></span><span class="cat" style="--c:${catColor(f.category)}">${esc(f.category)}</span><span class="dinfo"><span class="dn" title="${esc(f.name)}">${esc(f.name)}</span><small>${esc([v.specialty,v.doctor,S.sel==='all'&&mm?mm.name:''].filter(Boolean).join(' · '))}</small></span><span class="dacts"><button class="btn sm primary" data-act="openFile" data-id="${esc(f.id)}">Ver</button>${IOS?'':`<button class="btn sm ghost" data-act="dlFile" data-id="${esc(f.id)}">Descargar</button>`}<button class="btn sm ghost" data-act="goVisit" data-id="${esc(v.id)}">Visita</button></span></div>`}).join('');
+  el.innerHTML=h;
+}
 function renderList(){
   const el=$('#visitList');if(!el)return;
+  if(S.view==='docs')return renderDocs(el);
   const m=S.sel==='all'?null:S.sel;
   const list=S.visits.filter(v=>(!m||v.memberId===m)&&(!S.spec||v.specialty===S.spec)&&matches(v)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.created||0)-(a.created||0));
   const total=S.visits.filter(v=>!m||v.memberId===m).length;
@@ -1035,6 +1066,9 @@ const actions={
   rmDraft:id=>{const d=draft.docs.find(x=>x.id===id);if(!d)return;draft.docs=draft.docs.filter(x=>x.id!==id);if(!d.isNew)draft.removed.push(id);renderDraft()},
   settings:()=>settingsModal(),
   syncNow:()=>sync(true),
+  view:v=>{S.view=v;renderMain()},
+  cat:c=>{S.cat=c||'';renderList()},
+  goVisit:id=>{S.view='visits';S.q='';S.open.add(id);renderMain();const el=document.getElementById('v-'+id);if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'center'})},
   addAppt:day=>apptModal(null,day||''),
   editAppt:id=>apptModal(id),
   delAppt:id=>deleteAppt(id),
@@ -1058,7 +1092,7 @@ const actions={
   calAll:()=>{CAL.day='';renderCal()},
   goAppt:id=>{
     const v=S.visits.find(x=>x.id===id);if(!v)return;
-    S.sel=v.memberId;S.q='';S.spec='';S.open.add(id);renderSide();renderMain();
+    S.sel=v.memberId;S.q='';S.spec='';S.view='visits';S.open.add(id);renderSide();renderMain();
     const el=document.getElementById('v-'+id);if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'center'});
   },
   authOpen:async()=>{
