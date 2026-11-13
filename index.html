@@ -237,6 +237,10 @@ aside{position:sticky;top:calc(var(--toph,62px) + 22px);align-self:start;max-hei
 .tst.warn{color:#dc2626;font-weight:600}
 .tline .docs{margin-top:6px}
 .year.warnh{color:#dc2626}
+.dbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.dbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 10%,var(--panel));color:var(--c);border-radius:9px;padding:7px 12px;font-weight:600;font-size:13.5px;cursor:pointer}
+.dbtn:hover{background:color-mix(in srgb,var(--c) 18%,var(--panel))}
+.drow .dbtn{flex:none}
 .filterday{display:flex;align-items:center;gap:8px;font-size:14px}
 /* Calendario compacto */
 .calg{gap:1px}
@@ -352,7 +356,7 @@ const KINDS={
 };
 const CARDS=[{k:'ssNum',l:'Seguridad Social',c:'#0f766e'},{k:'sanitasNum',l:'Sanitas',c:'#2563eb'},{k:'tseNum',l:'Tarjeta Sanitaria Europea',c:'#7c3aed',exp:'tseExp'}];
 const APP_ID='historia-clinica-familiar';
-const APP_VERSION='2026-11-13 · pruebas y volantes';
+const APP_VERSION='2026-11-13b · botones de documentos';
 const ZIP_DATA='datos_app.json';
 const REMOTE_JSON='/datos.json';
 const REMOTE_SUMMARY='/Resumen.html';
@@ -736,7 +740,7 @@ function renderDocs(el){
   let h=`<div class="catbar"><button class="catf ${!S.cat?'on':''}" style="--c:var(--accent)" data-act="cat" data-id="">Todos<span class="n">${base.length}</span></button>${CATS.map(c=>{const n=cnt(c.k);return `<button class="catf ${S.cat===c.k?'on':''}" style="--c:${c.c}" data-act="cat" data-id="${esc(c.k)}" ${n||S.cat===c.k?'':'disabled'}>${esc(c.k)}<span class="n">${n}</span></button>`}).join('')}</div>`;
   if(!list.length){el.innerHTML=h+`<div class="nores">${S.files.length?'No hay documentos con estos filtros.':'Todavía no hay documentos. Se añaden dentro de cada visita.'}</div>`;return}
   h+=list.map(f=>{const v=ctx.get(f.id),mm=S.members.find(x=>x.id===v.memberId),[yy,mo,dd]=(v.date||'--').split('-');
-    return `<div class="doc drow"><span class="ddate"><b>${esc(dd||'–')}</b><span>${mo?MONTHS[+mo-1]:''} ${esc(yy||'')}</span></span>${catSelect(f)}<span class="dinfo"><span class="dn" title="${esc(f.name)}">${esc(f.name)}</span><small>${esc([v.kind==='appt'?(v.akind==='test'?'Prueba: '+(v.title||''):'Cita'):'',v.specialty,v.doctor,S.sel==='all'&&mm?mm.name:''].filter(Boolean).join(' · '))}</small></span><span class="dacts"><button class="btn sm primary" data-act="openFile" data-id="${esc(f.id)}">Ver</button>${IOS?'':`<button class="btn sm ghost" data-act="dlFile" data-id="${esc(f.id)}">Descargar</button>`}${v.kind==='appt'?`<button class="btn sm ghost" data-act="editAppt" data-id="${esc(v.id)}">Cita</button>`:`<button class="btn sm ghost" data-act="goVisit" data-id="${esc(v.id)}">Visita</button>`}${delBtn(f)}</span></div>`}).join('');
+    return `<div class="doc drow"><span class="ddate"><b>${esc(dd||'–')}</b><span>${mo?MONTHS[+mo-1]:''} ${esc(yy||'')}</span></span>${docBtn(f)}<span class="dinfo"><small>${esc([v.kind==='appt'?(v.akind==='test'?'Prueba: '+(v.title||''):'Cita'):'',v.specialty,v.doctor,S.sel==='all'&&mm?mm.name:''].filter(Boolean).join(' · '))}</small></span><span class="dacts">${v.kind==='appt'?`<button class="btn sm ghost" data-act="${v.akind==='test'&&v.status==='done'?'markDone':'editAppt'}" data-id="${esc(v.id)}">${v.akind==='test'?'Prueba':'Cita'}</button>`:`<button class="btn sm ghost" data-act="goVisit" data-id="${esc(v.id)}">Visita</button>`}</span></div>`}).join('');
   el.innerHTML=h;
 }
 function testLine(x,t){
@@ -744,7 +748,7 @@ function testLine(x,t){
   const st=x.status==='done'?`<span class="tst ok">✔ Realizada${x.doneDate?' '+fmt(x.doneDate):''}${res.length?' · resultado disponible':' · falta el resultado'}</span>`
     :x.date?`<span class="tst ${x.date<t?'warn':''}">${x.date<t?'⚠ ':''}Cita ${fmt(x.date)}${x.time?' '+esc(x.time):''}</span>`:`<span class="tst warn">⚠ Sin cita todavía</span>`;
   return `<div class="tline"><div class="tlh"><b>${esc(x.title||'Prueba')}</b>${st}<span class="sp"></span>${x.status==='done'?`<button class="btn sm ghost" data-act="markDone" data-id="${esc(x.id)}">${res.length?'Editar':'Subir resultado'}</button>`:`<button class="btn sm ghost" data-act="editAppt" data-id="${esc(x.id)}">${x.date?'Ver':'Poner fecha'}</button>`}</div>
-    ${res.length?`<div class="docs">${res.map(docRow).join('')}</div>`:''}</div>`;
+    ${res.length?docBtns(res):''}</div>`;
 }
 function apptCard(a,t){
   const mm=S.members.find(x=>x.id===a.memberId),n=a.date?daysBetween(t,a.date):null;
@@ -764,7 +768,7 @@ function apptCard(a,t){
       ${a.notes?`<div class="an">${esc(a.notes)}</div>`:''}
       ${origin?`<div class="an">${isTest?'Pedida':'Indicada'} en la visita de ${esc(origin.specialty)} del ${fmt(origin.date)}.</div>`:''}
       ${tests.length?`<div class="tbox"><div class="tbh">Pruebas para esta revisión · ${tests.filter(x=>x.status==='done').length}/${tests.length} realizadas</div>${tests.map(x=>testLine(x,t)).join('')}</div>`:''}
-      ${docs.length?`<div class="docs" style="margin-top:8px">${docs.map(docRow).join('')}</div>`:''}
+      ${docs.length?docBtns(docs):''}
       <div class="aacts">${a.src!=='appt'
         ?`<button class="btn sm" data-act="revToAppt" data-id="${esc(a.id)}">Convertir en cita y añadir volante</button><button class="btn sm ghost" data-act="goVisit" data-id="${esc(a.id)}">Ver visita</button>`
         :isTest?`<button class="btn sm${n===null?' primary':''}" data-act="editAppt" data-id="${esc(a.id)}">${n===null?'Poner fecha':docs.length?'Editar':'Editar / añadir volante'}</button><button class="btn sm${n!==null&&n<=0?' primary':''}" data-act="markDone" data-id="${esc(a.id)}">Realizada · subir resultado</button>`
@@ -801,6 +805,15 @@ const icoChev='<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill
 const catSelect=f=>`<select class="cat" style="--c:${catColor(f.category)}" data-filecat="${esc(f.id)}" title="Cambiar el tipo de documento" aria-label="Tipo de documento">${CATS.map(c=>`<option ${c.k===f.category?'selected':''}>${esc(c.k)}</option>`).join('')}</select>`;
 const icoTrash='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
 const delBtn=f=>`<button class="btn sm ghost danger" data-act="delFile" data-id="${esc(f.id)}" title="Borrar documento" aria-label="Borrar documento">${icoTrash}</button>`;
+/* Vista de consulta: un botón por documento con su tipo; al pulsarlo se abre. (Cambiar tipo o borrar: solo en Editar) */
+const icoImg='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>';
+const icoDoc='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>';
+const docBtn=(f,label)=>`<button class="dbtn" style="--c:${catColor(f.category)}" data-act="openFile" data-id="${esc(f.id)}" title="${esc(f.name)}">${isImg(f)?icoImg:icoDoc}${esc(label||f.category)}</button>`;
+function docBtns(docs){
+  const sorted=docs.slice().sort((a,b)=>CATS.findIndex(c=>c.k===a.category)-CATS.findIndex(c=>c.k===b.category)||(a.added||0)-(b.added||0));
+  const tot={},seen={};sorted.forEach(f=>tot[f.category]=(tot[f.category]||0)+1);
+  return `<div class="dbtns">${sorted.map(f=>{seen[f.category]=(seen[f.category]||0)+1;return docBtn(f,f.category+(tot[f.category]>1?' '+seen[f.category]:''))}).join('')}</div>`;
+}
 function docRow(f){
   return `<div class="doc">${catSelect(f)}<span class="dn" title="${esc(f.name)}">${esc(f.name)}</span><span class="sz">${fsize(f.size||0)}</span><button class="btn sm" data-act="openFile" data-id="${esc(f.id)}">Ver</button>${IOS?'':`<button class="btn sm ghost" data-act="dlFile" data-id="${esc(f.id)}">Descargar</button>`}${delBtn(f)}</div>`;
 }
@@ -819,7 +832,7 @@ function visitCard(v){
   </button>
   <div class="vbody">
     <dl class="vf">${fld('Motivo de la consulta',v.reason)}${fld('Diagnóstico',v.diagnosis)}${fld('Tratamiento / medicación',v.treatment)}${fld('Pruebas y citas indicadas',ordersText(v))}${fld('Notas',v.notes)}</dl>
-    <div class="docs">${docs.length?docs.map(docRow).join(''):'<p class="muted" style="margin:0">Sin documentos adjuntos.</p>'}</div>
+    ${docs.length?docBtns(docs):'<p class="muted" style="margin:0">Sin documentos adjuntos.</p>'}
     <div class="vacts"><button class="btn ghost danger" data-act="delVisit" data-id="${esc(v.id)}">Eliminar</button><button class="btn" data-act="nextAppt" data-id="${esc(v.id)}">${S.appts.some(a=>a.fromVisit===v.id)?'Pruebas y citas':'+ Pruebas / próxima cita'}</button><button class="btn" data-act="editVisit" data-id="${esc(v.id)}">Editar visita</button></div>
   </div></article>`;
 }
