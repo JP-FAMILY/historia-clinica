@@ -195,6 +195,28 @@ aside{position:sticky;top:calc(var(--toph,62px) + 22px);align-self:start;max-hei
 .vwbody img{max-width:100%;max-height:100%;object-fit:contain;background:#fff;border-radius:4px}
 .vwerr{color:#fff;text-align:center;max-width:420px}
 .doc select.cat{appearance:none;-webkit-appearance:none;padding-right:18px;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 9px) 52%,calc(100% - 5px) 52%;background-size:4px 4px;background-repeat:no-repeat;background-color:color-mix(in srgb,var(--c) 13%,transparent)}
+/* Vista Citas */
+.segn{display:inline-block;background:rgba(255,255,255,.25);border-radius:10px;padding:0 6px;font-size:12px;margin-left:2px}
+.seg button:not(.on) .segn{background:var(--accent-2);color:var(--accent)}
+.acard{display:flex;gap:14px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:14px;box-shadow:var(--shadow);padding:14px 16px}
+.acard.soon{border-left-color:#d97706}
+.acard.past{border-left-color:var(--muted);opacity:.85}
+.adate{flex:none;width:60px;text-align:center;border-right:1px solid var(--line);padding-right:12px}
+.adate b{display:block;font-size:24px;line-height:1}
+.adate span{display:block;font-size:12px;color:var(--muted);text-transform:uppercase}
+.adate em{display:block;font-style:normal;font-weight:700;color:var(--accent);margin-top:4px;font-size:13.5px}
+.abody{flex:1;min-width:0}
+.awhen{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--accent)}
+.acard.soon .awhen{color:#d97706}
+.acard.past .awhen{color:var(--muted)}
+.ar{margin-top:4px;font-size:14px}
+.an{margin-top:3px;font-size:13px;color:var(--muted);white-space:pre-wrap}
+.aacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.filterday{display:flex;align-items:center;gap:8px;font-size:14px}
+/* Calendario compacto */
+.calg{gap:1px}
+.calg .d{aspect-ratio:auto;height:26px;font-size:12px;border-radius:6px}
+.calwrap .upl{max-height:260px;overflow:auto}
 .upd.appt{background:var(--accent-2)}
 .upd.appt b{color:var(--accent)}
 .btn.addappt{width:100%;margin:8px 0 4px;border-style:dashed;color:var(--accent)}
@@ -230,6 +252,12 @@ aside{position:sticky;top:calc(var(--toph,62px) + 22px);align-self:start;max-hei
   .calwrap>summary::after{content:'▾';color:var(--muted);margin-left:8px}
   .calwrap[open]>summary::after{content:'▴'}
   .calwrap>summary .cnt{margin-left:auto}
+  .calwrap .uph,.calwrap .upl,.calwrap .addappt{display:none}
+  .calwrap{padding:8px 10px 6px}
+  .calg .d{height:30px}
+  .acard{padding:12px;gap:10px}
+  .adate{width:48px;padding-right:8px}
+  .adate b{font-size:20px}
   .top{padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));gap:8px}
   .brand{font-size:16px}
   .brand .long{display:none}
@@ -267,7 +295,7 @@ aside{position:sticky;top:calc(var(--toph,62px) + 22px);align-self:start;max-hei
   <aside>
     <p class="lbl">Familia</p>
     <div id="members"></div>
-    <details class="calwrap" id="calBox" open><summary>Próximas citas <span class="cnt" id="calCnt">0</span></summary><div id="cal"></div></details>
+    <details class="calwrap" id="calBox" open><summary>Calendario de citas <span class="cnt" id="calCnt">0</span></summary><div id="cal"></div></details>
     <p class="note" id="sideNote"></p>
   </aside>
   <main id="main"></main>
@@ -286,7 +314,7 @@ const DEFAULT_APP_KEY='zx2ve0jubhjnkl3';
 
 /* ---------- Constantes ---------- */
 const SPECS=['Medicina de familia','Pediatría','Cardiología','Dermatología','Ginecología y obstetricia','Traumatología','Oftalmología','Otorrinolaringología','Neurología','Aparato digestivo','Endocrinología','Urología','Neumología','Psiquiatría','Psicología','Alergología','Reumatología','Oncología','Hematología','Nefrología','Cirugía general','Odontología','Fisioterapia','Nutrición','Urgencias','Análisis clínicos','Radiología'];
-const CATS=[{k:'Informe',c:'#2563eb'},{k:'Análisis',c:'#7c3aed'},{k:'Receta',c:'#059669'},{k:'Prueba / Imagen',c:'#d97706'},{k:'Justificante',c:'#0891b2'},{k:'Otro',c:'#64748b'}];
+const CATS=[{k:'Informe',c:'#2563eb'},{k:'Análisis',c:'#7c3aed'},{k:'Receta',c:'#059669'},{k:'Volante',c:'#db2777'},{k:'Prueba / Imagen',c:'#d97706'},{k:'Justificante',c:'#0891b2'},{k:'Otro',c:'#64748b'}];
 const RELS=['Padre','Madre','Hijo','Hija','Abuelo','Abuela','Pareja','Hermano','Hermana'];
 const BLOOD=['','0+','0−','A+','A−','B+','B−','AB+','AB−'];
 const MONTHS=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -302,11 +330,11 @@ const APP_ID='historia-clinica-familiar';
 const ZIP_DATA='datos_app.json';
 const REMOTE_JSON='/datos.json';
 const REMOTE_SUMMARY='/Resumen.html';
-const FILE_KEYS=['id','visitId','memberId','category','name','mime','size','added','updated','path'];
+const FILE_KEYS=['id','visitId','apptId','memberId','category','name','mime','size','added','updated','path'];
 const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 
 /* ---------- Estado y utilidades ---------- */
-const S={members:[],visits:[],files:[],appts:[],blobs:new Map(),tombs:{},sel:'all',q:'',spec:'',open:new Set(),view:'visits',cat:''};
+const S={members:[],visits:[],files:[],appts:[],blobs:new Map(),tombs:{},sel:'all',q:'',spec:'',open:new Set(),view:'appts',cat:''};
 const COLL=['members','visits','files','appts'];
 const AUTH={appKey:DEFAULT_APP_KEY,refresh:'',access:'',exp:0,account:null};
 const SYNC={state:'off',msg:'',last:0,rev:''};
@@ -468,9 +496,15 @@ async function applyRemote(remote){
   await delMany('blobs',dels.files);await setMeta('tombs',S.tombs);
   return changed;
 }
+/* Contexto de un documento: pertenece a una visita o a una cita (volantes) */
+function fileCtx(f){
+  if(f.visitId){const v=S.visits.find(x=>x.id===f.visitId);if(v)return {kind:'visit',...v}}
+  if(f.apptId){const a=S.appts.find(x=>x.id===f.apptId);if(a)return {kind:'appt',...a}}
+  return null;
+}
 function blobPath(f){
-  const v=S.visits.find(x=>x.id===f.visitId)||{},m=S.members.find(x=>x.id===(v.memberId||f.memberId))||{};
-  return `/Documentos/${safe(m.name||'Sin_familiar')}/${v.date||'sin-fecha'}_${safe(v.specialty||'Visita')}/${safe(f.category)}_${safe(stripExt(f.name))}_${String(f.id).replace(/-/g,'').slice(0,6)}${extOf(f.name,f.mime)}`;
+  const v=fileCtx(f)||{},m=S.members.find(x=>x.id===(v.memberId||f.memberId))||{};
+  return `/Documentos/${safe(m.name||'Sin_familiar')}/${v.date||'sin-fecha'}_${safe(v.specialty||'Visita')}${v.kind==='appt'?'_cita':''}/${safe(f.category)}_${safe(stripExt(f.name))}_${String(f.id).replace(/-/g,'').slice(0,6)}${extOf(f.name,f.mime)}`;
 }
 async function uploadPendingBlobs(){
   for(const f of S.files.filter(x=>!x.uploaded)){
@@ -600,7 +634,7 @@ function renderMain(){
   const m=S.sel==='all'?null:S.members.find(x=>x.id===S.sel);
   if(S.sel!=='all'&&!m){S.sel='all';return renderMain()}
   const vis=S.visits.filter(v=>!m||v.memberId===m.id);
-  const specs=[...new Set(vis.map(v=>v.specialty).filter(Boolean))].sort(byName);
+  const specs=[...new Set([...vis,...S.appts.filter(a=>!m||a.memberId===m.id)].map(v=>v.specialty).filter(Boolean))].sort(byName);
   if(S.spec&&!specs.includes(S.spec))S.spec='';
   const vids=new Set(vis.map(v=>v.id)),nDocs=S.files.filter(f=>vids.has(f.visitId)).length;
   const last=vis.map(v=>v.date).filter(Boolean).sort().pop();
@@ -620,7 +654,8 @@ function renderMain(){
   }else{
     h+=`<section class="card"><div class="ph"><div><h1>Toda la familia</h1><p class="muted">${S.members.length} familiar${S.members.length===1?'':'es'} · ${vis.length} visitas · ${nDocs} documentos</p></div></div></section>`;
   }
-  h+=`<div class="tools"><div class="seg" role="tablist"><button class="${S.view==='visits'?'on':''}" data-act="view" data-id="visits">Visitas</button><button class="${S.view==='docs'?'on':''}" data-act="view" data-id="docs">Documentos</button></div><input id="q" type="search" placeholder="${S.view==='docs'?'Buscar documento, especialidad, médico…':'Buscar médico, diagnóstico, medicación…'}" value="${esc(S.q)}"><select id="spec"><option value="">Todas las especialidades</option>${specs.map(s=>`<option ${s===S.spec?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select><button class="btn" data-act="addAppt">+ Nueva cita</button><button class="btn primary" data-act="addVisit">+ Nueva visita</button></div><div id="visitList"></div>`;
+  const nUp=allAppts().filter(a=>(!m||a.memberId===m.id)&&a.date>=today()).length;
+  h+=`<div class="tools"><div class="seg" role="tablist"><button class="${S.view==='appts'?'on':''}" data-act="view" data-id="appts">Citas${nUp?` <span class="segn">${nUp}</span>`:''}</button><button class="${S.view==='visits'?'on':''}" data-act="view" data-id="visits">Visitas</button><button class="${S.view==='docs'?'on':''}" data-act="view" data-id="docs">Documentos</button></div><input id="q" type="search" placeholder="${S.view==='docs'?'Buscar documento, especialidad, médico…':S.view==='appts'?'Buscar cita, médico, centro…':'Buscar médico, diagnóstico, medicación…'}" value="${esc(S.q)}"><select id="spec"><option value="">Todas las especialidades</option>${specs.map(s=>`<option ${s===S.spec?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select><button class="btn" data-act="addAppt">+ Nueva cita</button><button class="btn primary" data-act="addVisit">+ Nueva visita</button></div><div id="visitList"></div>`;
   const q=document.activeElement&&document.activeElement.id==='q';
   main.innerHTML=h;
   if(q){const i=$('#q');i.focus();i.setSelectionRange(i.value.length,i.value.length)}
@@ -635,21 +670,52 @@ function matches(v){
 }
 function renderDocs(el){
   const m=S.sel==='all'?null:S.sel,q=S.q.toLowerCase();
-  const vBy=Object.fromEntries(S.visits.map(v=>[v.id,v]));
-  const base=S.files.filter(f=>{const v=vBy[f.visitId];if(!v||(m&&v.memberId!==m)||(S.spec&&v.specialty!==S.spec))return false;
+  const ctx=new Map(S.files.map(f=>[f.id,fileCtx(f)]));
+  const base=S.files.filter(f=>{const v=ctx.get(f.id);if(!v||(m&&v.memberId!==m)||(S.spec&&v.specialty!==S.spec))return false;
     if(!q)return true;const mm=S.members.find(x=>x.id===v.memberId);
     return [f.name,f.category,v.specialty,v.doctor,v.center,v.reason,v.diagnosis,mm&&mm.name].join(' ').toLowerCase().includes(q)});
   const cnt=k=>base.filter(f=>f.category===k).length;
-  const list=base.filter(f=>!S.cat||f.category===S.cat).sort((a,b)=>(vBy[b.visitId].date||'').localeCompare(vBy[a.visitId].date||'')||byName(a.name,b.name));
+  const list=base.filter(f=>!S.cat||f.category===S.cat).sort((a,b)=>(ctx.get(b.id).date||'').localeCompare(ctx.get(a.id).date||'')||byName(a.name,b.name));
   let h=`<div class="catbar"><button class="catf ${!S.cat?'on':''}" style="--c:var(--accent)" data-act="cat" data-id="">Todos<span class="n">${base.length}</span></button>${CATS.map(c=>{const n=cnt(c.k);return `<button class="catf ${S.cat===c.k?'on':''}" style="--c:${c.c}" data-act="cat" data-id="${esc(c.k)}" ${n||S.cat===c.k?'':'disabled'}>${esc(c.k)}<span class="n">${n}</span></button>`}).join('')}</div>`;
   if(!list.length){el.innerHTML=h+`<div class="nores">${S.files.length?'No hay documentos con estos filtros.':'Todavía no hay documentos. Se añaden dentro de cada visita.'}</div>`;return}
-  h+=list.map(f=>{const v=vBy[f.visitId],mm=S.members.find(x=>x.id===v.memberId),[yy,mo,dd]=(v.date||'--').split('-');
-    return `<div class="doc drow"><span class="ddate"><b>${esc(dd||'–')}</b><span>${mo?MONTHS[+mo-1]:''} ${esc(yy||'')}</span></span>${catSelect(f)}<span class="dinfo"><span class="dn" title="${esc(f.name)}">${esc(f.name)}</span><small>${esc([v.specialty,v.doctor,S.sel==='all'&&mm?mm.name:''].filter(Boolean).join(' · '))}</small></span><span class="dacts"><button class="btn sm primary" data-act="openFile" data-id="${esc(f.id)}">Ver</button>${IOS?'':`<button class="btn sm ghost" data-act="dlFile" data-id="${esc(f.id)}">Descargar</button>`}<button class="btn sm ghost" data-act="goVisit" data-id="${esc(v.id)}">Visita</button>${delBtn(f)}</span></div>`}).join('');
+  h+=list.map(f=>{const v=ctx.get(f.id),mm=S.members.find(x=>x.id===v.memberId),[yy,mo,dd]=(v.date||'--').split('-');
+    return `<div class="doc drow"><span class="ddate"><b>${esc(dd||'–')}</b><span>${mo?MONTHS[+mo-1]:''} ${esc(yy||'')}</span></span>${catSelect(f)}<span class="dinfo"><span class="dn" title="${esc(f.name)}">${esc(f.name)}</span><small>${esc([v.specialty,v.doctor,S.sel==='all'&&mm?mm.name:''].filter(Boolean).join(' · '))}</small></span><span class="dacts"><button class="btn sm primary" data-act="openFile" data-id="${esc(f.id)}">Ver</button>${IOS?'':`<button class="btn sm ghost" data-act="dlFile" data-id="${esc(f.id)}">Descargar</button>`}${v.kind==='appt'?`<button class="btn sm ghost" data-act="editAppt" data-id="${esc(v.id)}">Cita</button>`:`<button class="btn sm ghost" data-act="goVisit" data-id="${esc(v.id)}">Visita</button>`}${delBtn(f)}</span></div>`}).join('');
+  el.innerHTML=h;
+}
+function apptCard(a,t){
+  const mm=S.members.find(x=>x.id===a.memberId),[yy,mo,dd]=a.date.split('-'),n=daysBetween(t,a.date);
+  const docs=a.src==='appt'?S.files.filter(f=>f.apptId===a.id).sort((x,y)=>byName(x.category,y.category)):[];
+  const when=n<0?`Hace ${-n} día${n===-1?'':'s'}`:n===0?'Hoy':n===1?'Mañana':`En ${n} días`;
+  const origin=a.src==='visit'?S.visits.find(v=>v.id===a.id):null;
+  return `<article class="acard ${n<0?'past':''} ${n>=0&&n<=2?'soon':''}">
+    <div class="adate"><b>${+dd}</b><span>${MONTHS[+mo-1]} ${yy}</span>${a.time?`<em>${esc(a.time)}</em>`:''}</div>
+    <div class="abody">
+      <div class="vt"><span class="spec">${esc(a.specialty||'Cita')}</span>${S.sel==='all'&&mm?`<span class="who">${esc(mm.name)}</span>`:''}<span class="awhen">${when}</span></div>
+      ${a.doctor||a.center?`<div class="vs">${esc([a.doctor,a.center].filter(Boolean).join(' · '))}</div>`:''}
+      ${a.reason?`<div class="ar">${esc(a.reason)}</div>`:''}
+      ${a.notes?`<div class="an">${esc(a.notes)}</div>`:''}
+      ${origin?`<div class="an">Revisión indicada en la visita del ${fmt(origin.date)}.</div>`:''}
+      ${docs.length?`<div class="docs" style="margin-top:8px">${docs.map(docRow).join('')}</div>`:''}
+      <div class="aacts">${a.src==='appt'
+        ?`<button class="btn sm" data-act="editAppt" data-id="${esc(a.id)}">${docs.length?'Editar':'Editar / añadir volante'}</button><button class="btn sm${n<=0?' primary':''}" data-act="apptToVisit" data-id="${esc(a.id)}">Registrar como visita</button>`
+        :`<button class="btn sm" data-act="revToAppt" data-id="${esc(a.id)}">Convertir en cita y añadir volante</button><button class="btn sm ghost" data-act="goVisit" data-id="${esc(a.id)}">Ver visita</button>`}</div>
+    </div></article>`;
+}
+function renderAppts(el){
+  const m=S.sel==='all'?null:S.sel,t=today(),q=S.q.toLowerCase();
+  let all=allAppts().filter(a=>(!m||a.memberId===m)&&(!S.spec||a.specialty===S.spec));
+  if(q)all=all.filter(a=>{const mm=S.members.find(x=>x.id===a.memberId);return [a.specialty,a.doctor,a.center,a.reason,a.notes,mm&&mm.name,...S.files.filter(f=>f.apptId===a.id).map(f=>f.name+' '+f.category)].join(' ').toLowerCase().includes(q)});
+  if(CAL.day)all=all.filter(a=>a.date===CAL.day);
+  const up=all.filter(a=>a.date>=t),past=all.filter(a=>a.date<t&&a.src==='appt').reverse();
+  let h=CAL.day?`<div class="filterday">Citas del <b>${fmt(CAL.day)}</b> <button class="btn sm ghost" data-act="calAll">Ver todas</button></div>`:'';
+  h+=up.length?up.map(a=>apptCard(a,t)).join(''):`<div class="nores">${CAL.day?'No hay citas ese día.':'No hay citas próximas. Pulsa <b>+ Nueva cita</b> para añadir una.'}</div>`;
+  if(past.length)h+=`<div class="year">Citas pasadas pendientes de registrar como visita</div>`+past.map(a=>apptCard(a,t)).join('');
   el.innerHTML=h;
 }
 function renderList(){
   const el=$('#visitList');if(!el)return;
   if(S.view==='docs')return renderDocs(el);
+  if(S.view==='appts')return renderAppts(el);
   const m=S.sel==='all'?null:S.sel;
   const list=S.visits.filter(v=>(!m||v.memberId===m)&&(!S.spec||v.specialty===S.spec)&&matches(v)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.created||0)-(a.created||0));
   const total=S.visits.filter(v=>!m||v.memberId===m).length;
@@ -738,11 +804,13 @@ async function normalizeSpecs(){ // corrige variantes ya guardadas (p. ej. "Urol
   if(n){await putMany('visits',fix.visits);await putMany('appts',fix.appts);markChange()}
   return n;
 }
-function apptModal(id,day){
-  const a=id?S.appts.find(x=>x.id===id):{memberId:S.sel!=='all'?S.sel:(S.members.length===1?S.members[0].id:''),date:day||''};
+function apptModal(id,day,prefill,fromVisit){
+  const a=id?S.appts.find(x=>x.id===id):(prefill||{memberId:S.sel!=='all'?S.sel:(S.members.length===1?S.members[0].id:''),date:day||''});
   if(!a)return;
   const val=k=>esc(a[k]||'');
-  openModal(`<form id="af" data-id="${esc(id||'')}"><header class="mh"><h2>${id?'Editar cita':'Nueva cita'}</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
+  draft={id:id||uid(),docs:id?S.files.filter(f=>f.apptId===id).map(f=>({...f})):[],removed:[],kind:'appt'};
+  setTimeout(renderDraft,0);
+  openModal(`<form id="af" data-id="${esc(id||'')}" data-fromvisit="${esc(fromVisit||'')}"><header class="mh"><h2>${id?'Editar cita':'Nueva cita'}</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
   <div class="mb"><div class="g2">
     <label>Familiar *<select name="memberId" required>${a.memberId?'':'<option value="">Elige…</option>'}${S.members.slice().sort((x,y)=>byName(x.name,y.name)).map(m=>`<option value="${esc(m.id)}" ${m.id===a.memberId?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>
     ${specPicker(val('specialty'))}
@@ -752,6 +820,12 @@ function apptModal(id,day){
     <label>Centro / hospital<input name="center" list="dl-center" value="${val('center')}" autocomplete="off"></label></div>
     <label>Motivo<textarea name="reason" rows="2" placeholder="Ej. Revisión anual, resultados de análisis…">${val('reason')}</textarea></label>
     <label>Notas / qué llevar<textarea name="notes" rows="2" placeholder="Ej. Ir en ayunas, llevar informe anterior…">${val('notes')}</textarea></label>
+    <fieldset class="docbox"><legend>Volantes y documentos para la cita</legend>
+      <div class="addrow">${['Volante','Informe','Análisis','Otro'].map(k=>`<button type="button" class="btn sm add" style="--c:${catColor(k)}" data-act="addDoc" data-id="${esc(k)}">+ ${esc(k)}</button>`).join('')}</div>
+      <p class="hint">Añade el volante del médico (PDF o foto) para tenerlo a mano el día de la cita.</p>
+      <div id="draftDocs"></div>
+      <input type="file" id="fileIn" accept="application/pdf,image/*" multiple hidden>
+    </fieldset>
     ${id?'<p class="apptnote">Cuando hayas ido a la cita, pulsa <b>Registrar como visita</b>: se creará la visita con estos datos para que añadas el diagnóstico y los informes, y la cita desaparecerá del calendario.</p>':''}
     <datalist id="dl-spec">${opts([...new Set([...uniqField('specialty'),...SPECS])])}</datalist>
     <datalist id="dl-doc">${opts(uniqField('doctor'))}</datalist>
@@ -761,7 +835,7 @@ function apptModal(id,day){
 function visitModal(id,prefill,fromAppt){
   const v=id?S.visits.find(x=>x.id===id):(prefill||{memberId:S.sel!=='all'?S.sel:(S.members.length===1?S.members[0].id:''),date:today()});
   if(!v)return;
-  draft={id:id||uid(),docs:id?S.files.filter(f=>f.visitId===id).map(f=>({...f})):[],removed:[],fromAppt:fromAppt||null};
+  draft={id:id||uid(),docs:id?S.files.filter(f=>f.visitId===id).map(f=>({...f})):(fromAppt?S.files.filter(f=>f.apptId===fromAppt).map(f=>({...f})):[]),removed:[],fromAppt:fromAppt||null};
   const val=k=>esc(v[k]||'');
   openModal(`<form id="vf"><header class="mh"><h2>${id?'Editar visita':'Nueva visita'}</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
   <div class="mb"><div class="g2">
@@ -888,10 +962,11 @@ async function saveVisit(form){
     await putMany('files',recs);
     if(draft.removed.length)await tombstone('files',draft.removed);
   }catch(e){alert('No se pudo guardar: '+errMsg(e));btn.disabled=false;btn.textContent='Guardar visita';return}
-  if(draft.fromAppt)await deleteAppt(draft.fromAppt,true);
+  const fromAppt=draft.fromAppt,recIds=new Set(recs.map(r=>r.id));
   newBlobs.forEach(b=>S.blobs.set(b.id,b.blob));
   S.visits=S.visits.filter(x=>x.id!==rec.id).concat(rec);
-  S.files=S.files.filter(f=>f.visitId!==rec.id&&!draft.removed.includes(f.id)).concat(recs);
+  S.files=S.files.filter(f=>f.visitId!==rec.id&&!recIds.has(f.id)&&!draft.removed.includes(f.id)).concat(recs);
+  if(fromAppt)await deleteAppt(fromAppt,true); // los volantes ya han pasado a la visita
   if(S.sel!=='all')S.sel=rec.memberId;
   S.open.add(rec.id);closeModal();markChange();render();toast(ex?'Visita actualizada':'Visita guardada');
 }
@@ -899,17 +974,31 @@ async function saveAppt(form){
   const fd=Object.fromEntries(new FormData(form));for(const k in fd)fd[k]=String(fd[k]).trim();
   fd.specialty=resolveSpec(fd.specialty,fd.specialtyNew);delete fd.specialtyNew;
   if(!fd.memberId||!fd.date||!fd.specialty){if(!fd.specialty)toast('Elige o escribe la especialidad.');return}
-  const id=form.dataset.id||uid(),ex=S.appts.find(x=>x.id===id),now=Date.now();
+  const id=draft.id,ex=S.appts.find(x=>x.id===id),now=Date.now();
   const rec={...(ex||{}),...fd,id,created:ex?ex.created:now,updated:now};
-  try{await putMany('appts',[rec])}catch(e){alert('No se pudo guardar: '+errMsg(e));return}
+  const recs=draft.docs.map(d=>{const cur=S.files.find(x=>x.id===d.id)||{};return {id:d.id,apptId:id,memberId:rec.memberId,category:d.category,name:d.name,mime:d.mime,size:d.size,added:d.added,updated:now,path:cur.path||d.path,uploaded:!!(cur.uploaded||d.uploaded)}});
+  const newBlobs=draft.docs.filter(d=>d.isNew).map(d=>({id:d.id,blob:d.blob}));
+  const fromVisit=form.dataset.fromvisit,fv=fromVisit&&S.visits.find(v=>v.id===fromVisit);
+  const btn=form.querySelector('[type=submit]');btn.disabled=true;btn.textContent='Guardando…';
+  try{
+    await putMany('blobs',newBlobs);await putMany('appts',[rec]);await putMany('files',recs);
+    if(draft.removed.length)await tombstone('files',draft.removed);
+    if(fv)await putMany('visits',[{...fv,nextAppointment:'',updated:now}]); // la revisión pasa a ser una cita
+  }catch(e){alert('No se pudo guardar: '+errMsg(e));btn.disabled=false;btn.textContent='Guardar cita';return}
+  newBlobs.forEach(b=>S.blobs.set(b.id,b.blob));
+  const recIds=new Set(recs.map(r=>r.id));
+  S.files=S.files.filter(f=>f.apptId!==id&&!recIds.has(f.id)&&!draft.removed.includes(f.id)).concat(recs);
+  if(fv)S.visits=S.visits.map(v=>v.id===fromVisit?{...fv,nextAppointment:'',updated:now}:v);
   S.appts=S.appts.filter(x=>x.id!==id).concat(rec);
-  const [y,m]=rec.date.split('-').map(Number);CAL.y=y;CAL.m=m-1;
+  const [y,m]=rec.date.split('-').map(Number);CAL.y=y;CAL.m=m-1;S.view='appts';
   closeModal();markChange();render();toast(ex?'Cita actualizada':'Cita guardada');
 }
 async function deleteAppt(id,silent){
   const a=S.appts.find(x=>x.id===id);if(!a)return;
-  if(!silent&&!confirm(`¿Eliminar la cita de ${a.specialty} del ${fmt(a.date)}?`))return;
-  try{await tombstone('appts',[id])}catch(e){alert(errMsg(e));return}
+  const fs=S.files.filter(f=>f.apptId===id);
+  if(!silent&&!confirm(`¿Eliminar la cita de ${a.specialty} del ${fmt(a.date)}${fs.length?` y sus ${fs.length} volante(s)/documento(s)`:''}?`))return;
+  try{await tombstone('files',fs.map(f=>f.id));await tombstone('appts',[id])}catch(e){alert(errMsg(e));return}
+  S.files=S.files.filter(f=>f.apptId!==id);
   S.appts=S.appts.filter(x=>x.id!==id);
   if(!silent){closeModal();markChange();render();toast('Cita eliminada')}
 }
@@ -940,11 +1029,11 @@ async function deleteVisit(id){
 }
 async function deleteMember(id){
   const m=S.members.find(x=>x.id===id);if(!m)return;
-  const vs=S.visits.filter(v=>v.memberId===id),vids=new Set(vs.map(v=>v.id)),fs=S.files.filter(f=>vids.has(f.visitId));
+  const vs=S.visits.filter(v=>v.memberId===id),vids=new Set(vs.map(v=>v.id)),aids=new Set(S.appts.filter(a=>a.memberId===id).map(a=>a.id)),fs=S.files.filter(f=>vids.has(f.visitId)||aids.has(f.apptId));
   if(!confirm(`¿Eliminar a ${m.name} junto con ${vs.length} visita(s) y ${fs.length} documento(s)?\nSe borrará también en tus otros dispositivos y en Dropbox. No se puede deshacer.`))return;
   try{await tombstone('files',fs.map(f=>f.id));await tombstone('visits',vs.map(v=>v.id));await tombstone('appts',S.appts.filter(a=>a.memberId===id).map(a=>a.id));await tombstone('members',[id])}catch(e){alert(errMsg(e));return}
   S.appts=S.appts.filter(a=>a.memberId!==id);
-  S.files=S.files.filter(f=>!vids.has(f.visitId));S.visits=S.visits.filter(v=>v.memberId!==id);S.members=S.members.filter(x=>x.id!==id);S.sel='all';
+  S.files=S.files.filter(f=>!vids.has(f.visitId)&&!aids.has(f.apptId));S.visits=S.visits.filter(v=>v.memberId!==id);S.members=S.members.filter(x=>x.id!==id);S.sel='all';
   closeModal();markChange();render();toast('Familiar eliminado');
 }
 
@@ -1063,10 +1152,10 @@ async function doExport(){
     toast('Preparando la copia…',1800);
     const enc=new TextEncoder(),entries=[],used=new Set(),pathOf={};
     const mBy=Object.fromEntries(S.members.map(m=>[m.id,m])),vBy=Object.fromEntries(S.visits.map(v=>[v.id,v]));
-    const files=S.files.filter(f=>vBy[f.visitId]&&S.blobs.has(f.id));
+    const files=S.files.filter(f=>fileCtx(f)&&S.blobs.has(f.id));
     for(const f of files){
-      const v=vBy[f.visitId],m=mBy[v.memberId];
-      const folder=`${safe(m?m.name:'Sin_familiar')}/${v.date||'sin-fecha'}_${safe(v.specialty||'Visita')}`;
+      const v=fileCtx(f),m=mBy[v.memberId];
+      const folder=`${safe(m?m.name:'Sin_familiar')}/${v.date||'sin-fecha'}_${safe(v.specialty||'Visita')}${v.kind==='appt'?'_cita':''}`;
       const ext=extOf(f.name,f.mime),base=`${safe(f.category)}_${safe(stripExt(f.name))}`;
       let path=`${folder}/${base}${ext}`,i=2;
       while(used.has(path.toLowerCase()))path=`${folder}/${base}_${i++}${ext}`;
@@ -1089,7 +1178,7 @@ function buildSummary(pathOf,linkNote){
     const vs=S.visits.filter(v=>v.memberId===m.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     rows.push(`<h2>${esc(m.name)}${m.relation?` <small>(${esc(m.relation)})</small>`:''}</h2><dl class="p">${fld('Fecha de nacimiento',fmt(m.birthdate))}${fld('Grupo sanguíneo',m.blood)}${['allergies','conds','meds'].map(k=>fld(KINDS[k].title,getList(m,k).map(it=>'• '+[it.name,it.detail,it.notes].filter(Boolean).join(' — ')).join('\n'))).join('')}${CARDS.map(c=>fld(c.l,m[c.k]?m[c.k]+(c.exp&&m[c.exp]?' (caduca '+fmt(m[c.exp])+')':''):'')).join('')}${fld('Otra tarjeta / seguro',m.insurance)}${fld('Notas',m.notes)}</dl>`);
     const ap=allAppts().filter(a=>a.memberId===m.id&&a.date>=today());
-    if(ap.length)rows.push(`<div class="v"><div class="h">Próximas citas</div><ul>${ap.map(a=>`<li>${fmt(a.date)}${a.time?' '+esc(a.time):''} · ${esc(a.specialty)}${a.doctor?' · '+esc(a.doctor):''}${a.center?' · '+esc(a.center):''}${a.reason?' — '+esc(a.reason):''}</li>`).join('')}</ul></div>`);
+    if(ap.length)rows.push(`<div class="v"><div class="h">Próximas citas</div><ul>${ap.map(a=>`<li>${fmt(a.date)}${a.time?' '+esc(a.time):''} · ${esc(a.specialty)}${a.doctor?' · '+esc(a.doctor):''}${a.center?' · '+esc(a.center):''}${a.reason?' — '+esc(a.reason):''}${a.src==='appt'?S.files.filter(f=>f.apptId===a.id).map(f=>` · ${esc(f.category)}: ${pathOf[f.id]?`<a href="${esc(encodeURI(pathOf[f.id]))}">${esc(f.name)}</a>`:esc(f.name)}`).join(''):''}</li>`).join('')}</ul></div>`);
     if(!vs.length)rows.push('<p class="m">Sin visitas registradas.</p>');
     for(const v of vs){
       const docs=S.files.filter(f=>f.visitId===v.id);
@@ -1175,8 +1264,12 @@ const actions={
   },
   calPrev:()=>{CAL.m--;if(CAL.m<0){CAL.m=11;CAL.y--}renderCal()},
   calNext:()=>{CAL.m++;if(CAL.m>11){CAL.m=0;CAL.y++}renderCal()},
-  calDay:d=>{CAL.day=CAL.day===d?'':d;renderCal()},
-  calAll:()=>{CAL.day='';renderCal()},
+  calDay:d=>{CAL.day=CAL.day===d?'':d;renderCal();if(S.view!=='appts'){S.view='appts';renderMain()}else renderList()},
+  calAll:()=>{CAL.day='';renderCal();renderList()},
+  revToAppt:id=>{
+    const v=S.visits.find(x=>x.id===id);if(!v)return;
+    apptModal(null,'',{memberId:v.memberId,date:v.nextAppointment,specialty:v.specialty,doctor:v.doctor,center:v.center,reason:'Revisión'},id);
+  },
   goAppt:id=>{
     const v=S.visits.find(x=>x.id===id);if(!v)return;
     S.sel=v.memberId;S.q='';S.spec='';S.view='visits';S.open.add(id);renderSide();renderMain();
