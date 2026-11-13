@@ -212,6 +212,31 @@ aside{position:sticky;top:calc(var(--toph,62px) + 22px);align-self:start;max-hei
 .ar{margin-top:4px;font-size:14px}
 .an{margin-top:3px;font-size:13px;color:var(--muted);white-space:pre-wrap}
 .aacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.nextbox{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:color-mix(in srgb,var(--accent) 5%,transparent)}
+.nextbox legend{color:var(--accent)}
+.orow{border:1px solid var(--line);border-left:4px solid #d97706;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--panel)}
+.orow.review{border-left-color:var(--accent)}
+.orowf{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.ochip{font-size:12px;background:var(--chip);border-radius:20px;padding:3px 10px;display:inline-flex;align-items:center;gap:4px}
+.ochip.ok{background:var(--accent-2);color:var(--accent);font-weight:600}
+.ochip button{border:0;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0 2px}
+.kb{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:5px}
+.kb.test{background:#fdf0e1;color:#b45309}
+.kb.rev{background:var(--accent-2);color:var(--accent)}
+.acard.test{border-left-color:#d97706}
+.acard.nodate{border-left-color:#dc2626;border-style:dashed solid dashed solid}
+.acard.nodate .awhen{color:#dc2626}
+.adate b.nd{color:#dc2626}
+.tbox{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:color-mix(in srgb,var(--chip) 60%,transparent)}
+.tbh{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:4px}
+.tline{padding:6px 0;border-top:1px solid var(--line)}
+.tline:first-of-type{border-top:0}
+.tlh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tst{font-size:12.5px;color:var(--muted)}
+.tst.ok{color:var(--accent);font-weight:600}
+.tst.warn{color:#dc2626;font-weight:600}
+.tline .docs{margin-top:6px}
+.year.warnh{color:#dc2626}
 .filterday{display:flex;align-items:center;gap:8px;font-size:14px}
 /* Calendario compacto */
 .calg{gap:1px}
@@ -327,6 +352,7 @@ const KINDS={
 };
 const CARDS=[{k:'ssNum',l:'Seguridad Social',c:'#0f766e'},{k:'sanitasNum',l:'Sanitas',c:'#2563eb'},{k:'tseNum',l:'Tarjeta Sanitaria Europea',c:'#7c3aed',exp:'tseExp'}];
 const APP_ID='historia-clinica-familiar';
+const APP_VERSION='2026-11-13 · pruebas y volantes';
 const ZIP_DATA='datos_app.json';
 const REMOTE_JSON='/datos.json';
 const REMOTE_SUMMARY='/Resumen.html';
@@ -496,11 +522,42 @@ async function applyRemote(remote){
   await delMany('blobs',dels.files);await setMeta('tombs',S.tombs);
   return changed;
 }
-/* Contexto de un documento: pertenece a una visita o a una cita (volantes) */
+/* Contexto de un documento: pertenece a una visita o a una cita/prueba (volantes y resultados) */
 function fileCtx(f){
-  if(f.visitId){const v=S.visits.find(x=>x.id===f.visitId);if(v)return {kind:'visit',...v}}
-  if(f.apptId){const a=S.appts.find(x=>x.id===f.apptId);if(a)return {kind:'appt',...a}}
+  if(f.visitId){const v=S.visits.find(x=>x.id===f.visitId);if(v)return {...v,kind:'visit'}}
+  if(f.apptId){const a=S.appts.find(x=>x.id===f.apptId);if(a)return {...a,akind:a.kind,kind:'appt'}}
   return null;
+}
+/* --- Órdenes del médico: pruebas (kind 'test') y revisiones (kind 'review') enlazadas a la visita que las pidió --- */
+const TESTS=['Análisis de sangre','Análisis de orina','Radiografía','Ecografía','Resonancia magnética','TAC / Escáner','Electrocardiograma','Ecocardiograma','Holter','Prueba de esfuerzo','Mamografía','Densitometría','Colonoscopia','Gastroscopia','Espirometría','Audiometría','Biopsia'];
+const apptTitle=a=>a.kind==='test'?(a.title||'Prueba'):(a.specialty||'Cita');
+function testSpec(t,fallback){
+  const k=specKey(t);
+  if(/analis|analit|sangre|orina|hemograma/.test(k))return 'Análisis clínicos';
+  if(/radio|rx|ecograf|resonan|tac|escaner|mamograf|densito/.test(k))return 'Radiología';
+  if(/electro|ecocardio|holter|esfuerzo/.test(k))return 'Cardiología';
+  if(/colono|gastros|endosco/.test(k))return 'Aparato digestivo';
+  return fallback||'Pruebas';
+}
+const testResults=a=>S.files.filter(f=>f.apptId===a.id&&f.category!=='Volante');
+const reviewTests=r=>r&&r.kind==='review'&&r.fromVisit?S.appts.filter(a=>a.kind==='test'&&a.fromVisit===r.fromVisit):[];
+let ORD=null,ordFor=null,ordInit=[],ordPending=null; // filas de órdenes en el formulario de visita
+function newOrd(kind,base){return {oid:uid(),kind,title:kind==='review'?'Revisión':'',date:'',time:'',center:'',vol:[],existing:false,...(base||{})}}
+function renderOrders(){
+  const el=$('#ordList');if(!el||!ORD)return;
+  el.innerHTML=ORD.length?ORD.map(o=>{
+    const ex=o.existing?S.appts.find(a=>a.id===o.oid):null,nv=ex?S.files.filter(f=>f.apptId===ex.id&&f.category==='Volante').length:0,done=ex&&ex.status==='done';
+    return `<div class="orow ${o.kind}"><div class="g2">
+      <label>Tipo<select data-ofield="kind" data-oid="${esc(o.oid)}"><option value="test" ${o.kind==='test'?'selected':''}>Prueba (análisis, radiografía…)</option><option value="review" ${o.kind==='review'?'selected':''}>Cita con el médico (revisión / resultados)</option></select></label>
+      <label>${o.kind==='test'?'Prueba *':'Motivo'}<input data-ofield="title" data-oid="${esc(o.oid)}" ${o.kind==='test'?'list="dl-tests" placeholder="Ej. Análisis de sangre"':'placeholder="Ej. Ver resultados"'} value="${esc(o.title)}" autocomplete="off"></label>
+      <label>Fecha <small class="muted">(vacía si aún no la sabes)</small><input type="date" data-ofield="date" data-oid="${esc(o.oid)}" value="${esc(o.date)}"></label>
+      <label>Hora<input type="time" data-ofield="time" data-oid="${esc(o.oid)}" value="${esc(o.time)}"></label>
+      <label class="full">Centro / dónde<input data-ofield="center" data-oid="${esc(o.oid)}" list="dl-center" value="${esc(o.center)}" placeholder="${o.kind==='review'?'Si lo dejas vacío, el mismo de la visita':'Ej. Laboratorio Sanitas'}" autocomplete="off"></label></div>
+      <div class="orowf"><button type="button" class="btn sm add" style="--c:${catColor('Volante')}" data-act="ordVol" data-id="${esc(o.oid)}">+ Volante</button>
+        ${nv?`<span class="ochip">${nv} volante(s) ya adjunto(s)</span>`:''}${o.vol.map(d=>`<span class="ochip">${esc(d.name)} <button type="button" data-act="ordVolRm" data-id="${esc(o.oid)}|${esc(d.id)}" aria-label="Quitar">×</button></span>`).join('')}
+        ${done?`<span class="ochip ok">Realizada${ex.doneDate?' el '+fmt(ex.doneDate):''}</span>`:''}
+        <span class="sp"></span><button type="button" class="btn sm ghost danger" data-act="ordDel" data-id="${esc(o.oid)}">Quitar</button></div></div>`}).join('')
+    :'<p class="muted" style="margin:0 0 6px;font-size:13.5px">Ninguna. Si el médico te manda pruebas o te da otra cita, añádelas aquí.</p>';
 }
 function blobPath(f){
   const v=fileCtx(f)||{},m=S.members.find(x=>x.id===(v.memberId||f.memberId))||{};
@@ -613,7 +670,7 @@ function renderCal(){
   }
   const list=CAL.day?(byDay[CAL.day]||[]):upcoming.slice(0,12);
   const item=a=>{const mm=S.members.find(x=>x.id===a.memberId),[y,mo,d]=a.date.split('-'),n=daysBetween(t,a.date);
-    return `<button class="upi" data-act="${a.src==='appt'?'editAppt':'goAppt'}" data-id="${esc(a.id)}" title="${a.src==='appt'?'Cita':'Revisión indicada en una visita'}"><span class="upd ${a.src}"><b>${+d}</b><span>${MONTHS[+mo-1]}</span></span><span class="upt"><b>${esc(mm?mm.name:'')}${a.time?` · ${esc(a.time)}`:''}</b><small>${esc([a.specialty,a.center].filter(Boolean).join(' · '))}${a.src==='visit'?' · revisión':''}</small></span>${n>=0?`<span class="upin">${n===0?'Hoy':n===1?'Mañana':n+' d'}</span>`:''}</button>`};
+    return `<button class="upi" data-act="${a.src==='appt'?'editAppt':'goAppt'}" data-id="${esc(a.id)}" title="${a.src==='appt'?'Cita':'Revisión indicada en una visita'}"><span class="upd ${a.src}"><b>${+d}</b><span>${MONTHS[+mo-1]}</span></span><span class="upt"><b>${esc(mm?mm.name:'')}${a.time?` · ${esc(a.time)}`:''}</b><small>${esc([a.kind==='test'?'Prueba: '+apptTitle(a):a.specialty,a.center].filter(Boolean).join(' · '))}${a.src==='visit'||a.kind==='review'?' · revisión':''}</small></span>${n>=0?`<span class="upin">${n===0?'Hoy':n===1?'Mañana':n+' d'}</span>`:''}</button>`};
   el.innerHTML=`<div class="calh"><button data-act="calPrev" aria-label="Mes anterior">‹</button><span>${MONTHS_L[CAL.m]} ${CAL.y}</span><button data-act="calNext" aria-label="Mes siguiente">›</button></div>
   <div class="calg">${g}</div>
   <div class="uph"><span>${CAL.day?fmt(CAL.day):'Próximas'}</span>${CAL.day?'<button data-act="calAll">Ver todas</button>':''}</div>
@@ -623,7 +680,7 @@ function renderCal(){
 /* Citas: las creadas directamente + las "próxima cita" de las visitas */
 function allAppts(){
   const ok=id=>S.members.some(m=>m.id===id);
-  const a=S.appts.filter(x=>x.date&&ok(x.memberId)).map(x=>({...x,src:'appt'}));
+  const a=S.appts.filter(x=>x.date&&ok(x.memberId)&&!(x.kind==='test'&&x.status==='done')).map(x=>({...x,src:'appt'}));
   const b=S.visits.filter(v=>v.nextAppointment&&ok(v.memberId)).map(v=>({id:v.id,memberId:v.memberId,date:v.nextAppointment,time:'',specialty:v.specialty,center:v.center,doctor:v.doctor,src:'visit'}));
   return a.concat(b).sort((x,y)=>x.date.localeCompare(y.date)||(x.time||'99').localeCompare(y.time||'99'));
 }
@@ -654,8 +711,8 @@ function renderMain(){
   }else{
     h+=`<section class="card"><div class="ph"><div><h1>Toda la familia</h1><p class="muted">${S.members.length} familiar${S.members.length===1?'':'es'} · ${vis.length} visitas · ${nDocs} documentos</p></div></div></section>`;
   }
-  const nUp=allAppts().filter(a=>(!m||a.memberId===m.id)&&a.date>=today()).length;
-  h+=`<div class="tools"><div class="seg" role="tablist"><button class="${S.view==='appts'?'on':''}" data-act="view" data-id="appts">Citas${nUp?` <span class="segn">${nUp}</span>`:''}</button><button class="${S.view==='visits'?'on':''}" data-act="view" data-id="visits">Visitas</button><button class="${S.view==='docs'?'on':''}" data-act="view" data-id="docs">Documentos</button></div><input id="q" type="search" placeholder="${S.view==='docs'?'Buscar documento, especialidad, médico…':S.view==='appts'?'Buscar cita, médico, centro…':'Buscar médico, diagnóstico, medicación…'}" value="${esc(S.q)}"><select id="spec"><option value="">Todas las especialidades</option>${specs.map(s=>`<option ${s===S.spec?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select><button class="btn" data-act="addAppt">+ Nueva cita</button><button class="btn primary" data-act="addVisit">+ Nueva visita</button></div><div id="visitList"></div>`;
+  const nUp=allAppts().filter(a=>(!m||a.memberId===m.id)&&a.date>=today()).length+S.appts.filter(a=>!a.date&&!(a.kind==='test'&&a.status==='done')&&(!m||a.memberId===m.id)).length;
+  h+=`<div class="tools"><div class="seg" role="tablist"><button class="${S.view==='appts'?'on':''}" data-act="view" data-id="appts">Citas${nUp?` <span class="segn">${nUp}</span>`:''}</button><button class="${S.view==='visits'?'on':''}" data-act="view" data-id="visits">Visitas</button><button class="${S.view==='docs'?'on':''}" data-act="view" data-id="docs">Documentos</button></div><input id="q" type="search" placeholder="${S.view==='docs'?'Buscar documento, especialidad, médico…':S.view==='appts'?'Buscar cita, médico, centro…':'Buscar médico, diagnóstico, medicación…'}" value="${esc(S.q)}"><select id="spec"><option value="">Todas las especialidades</option>${specs.map(s=>`<option ${s===S.spec?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select><button class="btn" data-act="addAppt">+ Nueva cita</button>${S.view==='appts'?'<button class="btn" data-act="addTest">+ Prueba</button>':''}<button class="btn primary" data-act="addVisit">+ Nueva visita</button></div><div id="visitList"></div>`;
   const q=document.activeElement&&document.activeElement.id==='q';
   main.innerHTML=h;
   if(q){const i=$('#q');i.focus();i.setSelectionRange(i.value.length,i.value.length)}
@@ -679,37 +736,53 @@ function renderDocs(el){
   let h=`<div class="catbar"><button class="catf ${!S.cat?'on':''}" style="--c:var(--accent)" data-act="cat" data-id="">Todos<span class="n">${base.length}</span></button>${CATS.map(c=>{const n=cnt(c.k);return `<button class="catf ${S.cat===c.k?'on':''}" style="--c:${c.c}" data-act="cat" data-id="${esc(c.k)}" ${n||S.cat===c.k?'':'disabled'}>${esc(c.k)}<span class="n">${n}</span></button>`}).join('')}</div>`;
   if(!list.length){el.innerHTML=h+`<div class="nores">${S.files.length?'No hay documentos con estos filtros.':'Todavía no hay documentos. Se añaden dentro de cada visita.'}</div>`;return}
   h+=list.map(f=>{const v=ctx.get(f.id),mm=S.members.find(x=>x.id===v.memberId),[yy,mo,dd]=(v.date||'--').split('-');
-    return `<div class="doc drow"><span class="ddate"><b>${esc(dd||'–')}</b><span>${mo?MONTHS[+mo-1]:''} ${esc(yy||'')}</span></span>${catSelect(f)}<span class="dinfo"><span class="dn" title="${esc(f.name)}">${esc(f.name)}</span><small>${esc([v.specialty,v.doctor,S.sel==='all'&&mm?mm.name:''].filter(Boolean).join(' · '))}</small></span><span class="dacts"><button class="btn sm primary" data-act="openFile" data-id="${esc(f.id)}">Ver</button>${IOS?'':`<button class="btn sm ghost" data-act="dlFile" data-id="${esc(f.id)}">Descargar</button>`}${v.kind==='appt'?`<button class="btn sm ghost" data-act="editAppt" data-id="${esc(v.id)}">Cita</button>`:`<button class="btn sm ghost" data-act="goVisit" data-id="${esc(v.id)}">Visita</button>`}${delBtn(f)}</span></div>`}).join('');
+    return `<div class="doc drow"><span class="ddate"><b>${esc(dd||'–')}</b><span>${mo?MONTHS[+mo-1]:''} ${esc(yy||'')}</span></span>${catSelect(f)}<span class="dinfo"><span class="dn" title="${esc(f.name)}">${esc(f.name)}</span><small>${esc([v.kind==='appt'?(v.akind==='test'?'Prueba: '+(v.title||''):'Cita'):'',v.specialty,v.doctor,S.sel==='all'&&mm?mm.name:''].filter(Boolean).join(' · '))}</small></span><span class="dacts"><button class="btn sm primary" data-act="openFile" data-id="${esc(f.id)}">Ver</button>${IOS?'':`<button class="btn sm ghost" data-act="dlFile" data-id="${esc(f.id)}">Descargar</button>`}${v.kind==='appt'?`<button class="btn sm ghost" data-act="editAppt" data-id="${esc(v.id)}">Cita</button>`:`<button class="btn sm ghost" data-act="goVisit" data-id="${esc(v.id)}">Visita</button>`}${delBtn(f)}</span></div>`}).join('');
   el.innerHTML=h;
 }
+function testLine(x,t){
+  const res=testResults(x);
+  const st=x.status==='done'?`<span class="tst ok">✔ Realizada${x.doneDate?' '+fmt(x.doneDate):''}${res.length?' · resultado disponible':' · falta el resultado'}</span>`
+    :x.date?`<span class="tst ${x.date<t?'warn':''}">${x.date<t?'⚠ ':''}Cita ${fmt(x.date)}${x.time?' '+esc(x.time):''}</span>`:`<span class="tst warn">⚠ Sin cita todavía</span>`;
+  return `<div class="tline"><div class="tlh"><b>${esc(x.title||'Prueba')}</b>${st}<span class="sp"></span>${x.status==='done'?`<button class="btn sm ghost" data-act="markDone" data-id="${esc(x.id)}">${res.length?'Editar':'Subir resultado'}</button>`:`<button class="btn sm ghost" data-act="editAppt" data-id="${esc(x.id)}">${x.date?'Ver':'Poner fecha'}</button>`}</div>
+    ${res.length?`<div class="docs">${res.map(docRow).join('')}</div>`:''}</div>`;
+}
 function apptCard(a,t){
-  const mm=S.members.find(x=>x.id===a.memberId),[yy,mo,dd]=a.date.split('-'),n=daysBetween(t,a.date);
+  const mm=S.members.find(x=>x.id===a.memberId),n=a.date?daysBetween(t,a.date):null;
+  const [yy,mo,dd]=(a.date||'--').split('-');
+  const isTest=a.kind==='test',isRev=a.kind==='review'||a.src==='visit';
   const docs=a.src==='appt'?S.files.filter(f=>f.apptId===a.id).sort((x,y)=>byName(x.category,y.category)):[];
-  const when=n<0?`Hace ${-n} día${n===-1?'':'s'}`:n===0?'Hoy':n===1?'Mañana':`En ${n} días`;
-  const origin=a.src==='visit'?S.visits.find(v=>v.id===a.id):null;
-  return `<article class="acard ${n<0?'past':''} ${n>=0&&n<=2?'soon':''}">
-    <div class="adate"><b>${+dd}</b><span>${MONTHS[+mo-1]} ${yy}</span>${a.time?`<em>${esc(a.time)}</em>`:''}</div>
+  const when=n===null?'Pendiente de pedir cita':n<0?`Hace ${-n} día${n===-1?'':'s'}`:n===0?'Hoy':n===1?'Mañana':`En ${n} días`;
+  const origin=a.src==='visit'?S.visits.find(v=>v.id===a.id):(a.fromVisit?S.visits.find(v=>v.id===a.fromVisit):null);
+  const tests=reviewTests(a);
+  const cls=[n===null?'nodate':'',n!==null&&n<0?'past':'',n!==null&&n>=0&&n<=2?'soon':'',isTest?'test':''].filter(Boolean).join(' ');
+  return `<article class="acard ${cls}">
+    <div class="adate">${n===null?'<b class="nd">?</b><span>sin fecha</span>':`<b>${+dd}</b><span>${MONTHS[+mo-1]} ${yy}</span>`}${a.time?`<em>${esc(a.time)}</em>`:''}</div>
     <div class="abody">
-      <div class="vt"><span class="spec">${esc(a.specialty||'Cita')}</span>${S.sel==='all'&&mm?`<span class="who">${esc(mm.name)}</span>`:''}<span class="awhen">${when}</span></div>
-      ${a.doctor||a.center?`<div class="vs">${esc([a.doctor,a.center].filter(Boolean).join(' · '))}</div>`:''}
-      ${a.reason?`<div class="ar">${esc(a.reason)}</div>`:''}
+      <div class="vt">${isTest?'<span class="kb test">Prueba</span>':isRev?'<span class="kb rev">Revisión</span>':''}<span class="spec">${esc(isTest?apptTitle(a):(a.specialty||'Cita'))}</span>${S.sel==='all'&&mm?`<span class="who">${esc(mm.name)}</span>`:''}<span class="awhen">${when}</span></div>
+      ${a.doctor||a.center||(isTest&&a.specialty)?`<div class="vs">${esc([isTest?a.specialty:'',a.doctor,a.center].filter(Boolean).join(' · '))}</div>`:''}
+      ${a.reason&&!isTest?`<div class="ar">${esc(a.reason)}</div>`:''}
       ${a.notes?`<div class="an">${esc(a.notes)}</div>`:''}
-      ${origin?`<div class="an">Revisión indicada en la visita del ${fmt(origin.date)}.</div>`:''}
+      ${origin?`<div class="an">${isTest?'Pedida':'Indicada'} en la visita de ${esc(origin.specialty)} del ${fmt(origin.date)}.</div>`:''}
+      ${tests.length?`<div class="tbox"><div class="tbh">Pruebas para esta revisión · ${tests.filter(x=>x.status==='done').length}/${tests.length} realizadas</div>${tests.map(x=>testLine(x,t)).join('')}</div>`:''}
       ${docs.length?`<div class="docs" style="margin-top:8px">${docs.map(docRow).join('')}</div>`:''}
-      <div class="aacts">${a.src==='appt'
-        ?`<button class="btn sm" data-act="editAppt" data-id="${esc(a.id)}">${docs.length?'Editar':'Editar / añadir volante'}</button><button class="btn sm${n<=0?' primary':''}" data-act="apptToVisit" data-id="${esc(a.id)}">Registrar como visita</button>`
-        :`<button class="btn sm" data-act="revToAppt" data-id="${esc(a.id)}">Convertir en cita y añadir volante</button><button class="btn sm ghost" data-act="goVisit" data-id="${esc(a.id)}">Ver visita</button>`}</div>
+      <div class="aacts">${a.src!=='appt'
+        ?`<button class="btn sm" data-act="revToAppt" data-id="${esc(a.id)}">Convertir en cita y añadir volante</button><button class="btn sm ghost" data-act="goVisit" data-id="${esc(a.id)}">Ver visita</button>`
+        :isTest?`<button class="btn sm${n===null?' primary':''}" data-act="editAppt" data-id="${esc(a.id)}">${n===null?'Poner fecha':docs.length?'Editar':'Editar / añadir volante'}</button><button class="btn sm${n!==null&&n<=0?' primary':''}" data-act="markDone" data-id="${esc(a.id)}">Realizada · subir resultado</button>`
+        :`<button class="btn sm${n===null?' primary':''}" data-act="editAppt" data-id="${esc(a.id)}">${n===null?'Poner fecha':docs.length?'Editar':'Editar / añadir volante'}</button>${n!==null?`<button class="btn sm${n<=0?' primary':''}" data-act="apptToVisit" data-id="${esc(a.id)}">Registrar como visita</button>`:''}`}</div>
     </div></article>`;
 }
 function renderAppts(el){
   const m=S.sel==='all'?null:S.sel,t=today(),q=S.q.toLowerCase();
-  let all=allAppts().filter(a=>(!m||a.memberId===m)&&(!S.spec||a.specialty===S.spec));
-  if(q)all=all.filter(a=>{const mm=S.members.find(x=>x.id===a.memberId);return [a.specialty,a.doctor,a.center,a.reason,a.notes,mm&&mm.name,...S.files.filter(f=>f.apptId===a.id).map(f=>f.name+' '+f.category)].join(' ').toLowerCase().includes(q)});
+  const okM=a=>(!m||a.memberId===m)&&(!S.spec||a.specialty===S.spec)&&S.members.some(x=>x.id===a.memberId);
+  const mq=a=>{if(!q)return true;const mm=S.members.find(x=>x.id===a.memberId);return [a.specialty,a.title,a.doctor,a.center,a.reason,a.notes,mm&&mm.name,...S.files.filter(f=>f.apptId===a.id).map(f=>f.name+' '+f.category)].join(' ').toLowerCase().includes(q)};
+  let all=allAppts().filter(a=>okM(a)&&mq(a));
+  const nodate=CAL.day?[]:S.appts.filter(a=>!a.date&&!(a.kind==='test'&&a.status==='done')&&okM(a)&&mq(a)).map(a=>({...a,src:'appt'}));
   if(CAL.day)all=all.filter(a=>a.date===CAL.day);
   const up=all.filter(a=>a.date>=t),past=all.filter(a=>a.date<t&&a.src==='appt').reverse();
   let h=CAL.day?`<div class="filterday">Citas del <b>${fmt(CAL.day)}</b> <button class="btn sm ghost" data-act="calAll">Ver todas</button></div>`:'';
+  if(nodate.length)h+=`<div class="year warnh">Pendiente de pedir cita (${nodate.length})</div>`+nodate.map(a=>apptCard(a,t)).join('')+`<div class="year">Próximas</div>`;
   h+=up.length?up.map(a=>apptCard(a,t)).join(''):`<div class="nores">${CAL.day?'No hay citas ese día.':'No hay citas próximas. Pulsa <b>+ Nueva cita</b> para añadir una.'}</div>`;
-  if(past.length)h+=`<div class="year">Citas pasadas pendientes de registrar como visita</div>`+past.map(a=>apptCard(a,t)).join('');
+  if(past.length)h+=`<div class="year">Pasadas · pendientes de registrar como visita o de marcar como realizadas</div>`+past.map(a=>apptCard(a,t)).join('');
   el.innerHTML=h;
 }
 function renderList(){
@@ -745,9 +818,9 @@ function visitCard(v){
     <div class="vc">${docs.length?icoClip+docs.length:''}${icoChev}</div>
   </button>
   <div class="vbody">
-    <dl class="vf">${fld('Motivo de la consulta',v.reason)}${fld('Diagnóstico',v.diagnosis)}${fld('Tratamiento / medicación',v.treatment)}${fld('Próxima cita',fmt(v.nextAppointment))}${fld('Notas',v.notes)}</dl>
+    <dl class="vf">${fld('Motivo de la consulta',v.reason)}${fld('Diagnóstico',v.diagnosis)}${fld('Tratamiento / medicación',v.treatment)}${fld('Pruebas y citas indicadas',ordersText(v))}${fld('Notas',v.notes)}</dl>
     <div class="docs">${docs.length?docs.map(docRow).join(''):'<p class="muted" style="margin:0">Sin documentos adjuntos.</p>'}</div>
-    <div class="vacts"><button class="btn ghost danger" data-act="delVisit" data-id="${esc(v.id)}">Eliminar</button><button class="btn" data-act="editVisit" data-id="${esc(v.id)}">Editar visita</button></div>
+    <div class="vacts"><button class="btn ghost danger" data-act="delVisit" data-id="${esc(v.id)}">Eliminar</button><button class="btn" data-act="nextAppt" data-id="${esc(v.id)}">${S.appts.some(a=>a.fromVisit===v.id)?'Pruebas y citas':'+ Pruebas / próxima cita'}</button><button class="btn" data-act="editVisit" data-id="${esc(v.id)}">Editar visita</button></div>
   </div></article>`;
 }
 
@@ -810,11 +883,13 @@ function apptModal(id,day,prefill,fromVisit){
   const val=k=>esc(a[k]||'');
   draft={id:id||uid(),docs:id?S.files.filter(f=>f.apptId===id).map(f=>({...f})):[],removed:[],kind:'appt'};
   setTimeout(renderDraft,0);
-  openModal(`<form id="af" data-id="${esc(id||'')}" data-fromvisit="${esc(fromVisit||'')}"><header class="mh"><h2>${id?'Editar cita':'Nueva cita'}</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
-  <div class="mb"><div class="g2">
+  const isTest=a.kind==='test',origin=a.fromVisit?S.visits.find(v=>v.id===a.fromVisit):null;
+  const ttl=isTest?(id?'Editar prueba':'Nueva prueba'):a.kind==='review'?(id?'Editar cita de revisión':'Nueva cita de revisión'):(id?'Editar cita':'Nueva cita');
+  openModal(`<form id="af" data-id="${esc(id||'')}" data-fromvisit="${esc(fromVisit||'')}"><header class="mh"><h2>${ttl}</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
+  <div class="mb">${origin?`<p class="apptnote" style="margin:0">Pedida en la visita de ${esc(origin.specialty)} del ${fmt(origin.date)}.</p>`:''}<input type="hidden" name="kind" value="${esc(a.kind||'')}"><div class="g2">
     <label>Familiar *<select name="memberId" required>${a.memberId?'':'<option value="">Elige…</option>'}${S.members.slice().sort((x,y)=>byName(x.name,y.name)).map(m=>`<option value="${esc(m.id)}" ${m.id===a.memberId?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>
-    ${specPicker(val('specialty'))}
-    <label>Fecha *<input type="date" name="date" required value="${val('date')}"></label>
+    ${isTest?`<label>Prueba *<input name="title" list="dl-tests" required value="${val('title')}" autocomplete="off"></label>${specPicker(val('specialty')).replace(' required data-specsel',' data-specsel').replace('Especialidad *','Especialidad')}`:specPicker(val('specialty'))}
+    <label>Fecha${a.kind?' <small class="muted">(vacía si aún no la sabes)</small>':' *'}<input type="date" name="date" ${a.kind?'':'required'} value="${val('date')}"></label>
     <label>Hora<input type="time" name="time" value="${val('time')}"></label>
     <label>Médico/a<input name="doctor" list="dl-doc" value="${val('doctor')}" autocomplete="off"></label>
     <label>Centro / hospital<input name="center" list="dl-center" value="${val('center')}" autocomplete="off"></label></div>
@@ -826,16 +901,26 @@ function apptModal(id,day,prefill,fromVisit){
       <div id="draftDocs"></div>
       <input type="file" id="fileIn" accept="application/pdf,image/*" multiple hidden>
     </fieldset>
-    ${id?'<p class="apptnote">Cuando hayas ido a la cita, pulsa <b>Registrar como visita</b>: se creará la visita con estos datos para que añadas el diagnóstico y los informes, y la cita desaparecerá del calendario.</p>':''}
+    ${id&&!isTest?'<p class="apptnote">Cuando hayas ido a la cita, pulsa <b>Registrar como visita</b>: se creará la visita con estos datos (y con los resultados de las pruebas vinculadas) para que añadas el diagnóstico, y la cita desaparecerá del calendario.</p>':''}
+    ${id&&isTest?'<p class="apptnote">Cuando te hayas hecho la prueba, pulsa <b>Realizada · subir resultado</b>. El resultado aparecerá en la cita de revisión para llevarlo al médico.</p>':''}
     <datalist id="dl-spec">${opts([...new Set([...uniqField('specialty'),...SPECS])])}</datalist>
+    <datalist id="dl-tests">${opts(TESTS)}</datalist>
     <datalist id="dl-doc">${opts(uniqField('doctor'))}</datalist>
     <datalist id="dl-center">${opts(uniqField('center'))}</datalist></div>
-  <footer class="mf">${id?`<button type="button" class="btn ghost danger" data-act="delAppt" data-id="${esc(id)}">Eliminar</button><button type="button" class="btn" data-act="apptToVisit" data-id="${esc(id)}">Registrar como visita</button>`:''}<span class="sp"></span><button type="button" class="btn" data-act="closeModal">Cancelar</button><button class="btn primary" type="submit">Guardar cita</button></footer></form>`);
+  <footer class="mf">${id?`<button type="button" class="btn ghost danger" data-act="delAppt" data-id="${esc(id)}">Eliminar</button>${isTest?`<button type="button" class="btn" data-act="markDone" data-id="${esc(id)}">Realizada · subir resultado</button>`:`<button type="button" class="btn" data-act="apptToVisit" data-id="${esc(id)}">Registrar como visita</button>`}`:''}<span class="sp"></span><button type="button" class="btn" data-act="closeModal">Cancelar</button><button class="btn primary" type="submit">${isTest?'Guardar prueba':'Guardar cita'}</button></footer></form>`);
 }
 function visitModal(id,prefill,fromAppt){
   const v=id?S.visits.find(x=>x.id===id):(prefill||{memberId:S.sel!=='all'?S.sel:(S.members.length===1?S.members[0].id:''),date:today()});
   if(!v)return;
-  draft={id:id||uid(),docs:id?S.files.filter(f=>f.visitId===id).map(f=>({...f})):(fromAppt?S.files.filter(f=>f.apptId===fromAppt).map(f=>({...f})):[]),removed:[],fromAppt:fromAppt||null};
+  // Si se registra una revisión, sus documentos y los de las pruebas ya realizadas pasan a la visita
+  const consume=fromAppt?reviewTests(S.appts.find(a=>a.id===fromAppt)).filter(t=>t.status==='done').map(t=>t.id):[];
+  const srcIds=new Set([fromAppt,...consume].filter(Boolean));
+  draft={id:id||uid(),docs:id?S.files.filter(f=>f.visitId===id).map(f=>({...f})):S.files.filter(f=>srcIds.has(f.apptId)).map(f=>({...f})),removed:[],fromAppt:fromAppt||null,consume};
+  ordFor=draft.id;
+  ORD=id?S.appts.filter(a=>a.fromVisit===id).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).map(a=>({oid:a.id,kind:a.kind==='test'?'test':'review',title:a.kind==='test'?(a.title||''):(a.reason||''),date:a.date||'',time:a.time||'',center:a.center||'',vol:[],existing:true})):[];
+  if(id&&!ORD.length&&v.nextAppointment)ORD.push(newOrd('review',{date:v.nextAppointment}));
+  ordInit=ORD.filter(o=>o.existing).map(o=>o.oid);
+  setTimeout(renderOrders,0);
   const val=k=>esc(v[k]||'');
   openModal(`<form id="vf"><header class="mh"><h2>${id?'Editar visita':'Nueva visita'}</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
   <div class="mb"><div class="g2">
@@ -843,12 +928,18 @@ function visitModal(id,prefill,fromAppt){
     <label>Fecha de la visita *<input type="date" name="date" required value="${val('date')}"></label>
     ${specPicker(val('specialty'))}
     <label>Médico/a<input name="doctor" list="dl-doc" value="${val('doctor')}" autocomplete="off" placeholder="Ej. Dra. García"></label>
-    <label>Centro / hospital<input name="center" list="dl-center" value="${val('center')}" autocomplete="off"></label>
-    <label>Próxima cita / revisión<input type="date" name="nextAppointment" value="${val('nextAppointment')}"></label></div>
+    <label>Centro / hospital<input name="center" list="dl-center" value="${val('center')}" autocomplete="off"></label></div>
     <label>Motivo de la consulta<textarea name="reason" rows="2">${val('reason')}</textarea></label>
     <label>Diagnóstico<textarea name="diagnosis" rows="2">${val('diagnosis')}</textarea></label>
     <label>Tratamiento / medicación<textarea name="treatment" rows="3" placeholder="Medicamento, dosis, frecuencia, duración">${val('treatment')}</textarea></label>
     <label>Notas<textarea name="notes" rows="2">${val('notes')}</textarea></label>
+    <fieldset class="docbox nextbox" id="nextBox"><legend>Pruebas y próximas citas que te ha dado el médico</legend>
+      <div id="ordList"></div>
+      <div class="addrow"><button type="button" class="btn sm" data-act="ordAdd" data-id="test">+ Prueba</button><button type="button" class="btn sm" data-act="ordAdd" data-id="review">+ Cita con el médico</button></div>
+      <p class="hint" style="margin-bottom:0">Cada una aparecerá en <b>Citas</b>. Las que no tengan fecha saldrán en «Pendiente de pedir cita». La cita con el médico mostrará el estado y los resultados de estas pruebas.</p>
+      <input type="file" id="ordFileIn" accept="application/pdf,image/*" multiple hidden>
+    </fieldset>
+    <datalist id="dl-tests">${opts(TESTS)}</datalist>
     <fieldset class="docbox"><legend>Documentos (PDF o foto)</legend>
       <div class="addrow">${CATS.map(c=>`<button type="button" class="btn sm add" style="--c:${c.c}" data-act="addDoc" data-id="${esc(c.k)}">+ ${esc(c.k)}</button>`).join('')}</div>
       <p class="hint">Puedes elegir varios archivos a la vez. En el iPhone puedes elegir de Archivos, de Fotos o hacer la foto en el momento.</p>
@@ -896,7 +987,7 @@ function renderSettings(){
   }
   el.innerHTML=dbx+`<section class="sec"><h3>Copias de seguridad</h3><p class="muted" style="font-size:13.5px">Descarga un .zip con todos los datos, los documentos organizados en carpetas y un resumen legible. También sirve para pasar datos de la primera versión de la app.</p>
     <div class="row"><button class="btn" data-act="export">Descargar copia (.zip)</button><button class="btn" data-act="import">Importar copia (.zip)</button></div></section>
-    <section class="sec"><h3>Este dispositivo</h3><p class="muted" style="font-size:13.5px">${S.members.length} familiares · ${S.visits.length} visitas · ${S.files.length} documentos (${nLocal} guardados también en este dispositivo).${IOS?' En el iPhone los documentos se abren directamente desde Dropbox para ocupar menos espacio.':''}</p></section>`;
+    <section class="sec"><h3>Este dispositivo</h3><p class="muted" style="font-size:13.5px">${S.members.length} familiares · ${S.visits.length} visitas · ${S.files.length} documentos (${nLocal} guardados también en este dispositivo).${IOS?' En el iPhone los documentos se abren directamente desde Dropbox para ocupar menos espacio.':''}</p><p class="muted" style="font-size:12.5px">Versión de la app: <b>${APP_VERSION}</b></p></section>`;
 }
 
 /* --- Ventana emergente de alergias / enfermedades / medicación --- */
@@ -952,7 +1043,24 @@ async function saveVisit(form){
   fd.specialty=resolveSpec(fd.specialty,fd.specialtyNew);delete fd.specialtyNew;
   if(!fd.memberId||!fd.date||!fd.specialty){if(!fd.specialty)toast('Elige o escribe la especialidad.');return}
   const ex=S.visits.find(x=>x.id===draft.id),now=Date.now();
-  const rec={...(ex||{}),...fd,id:draft.id,created:ex?ex.created:now,updated:now};
+  const rec={...(ex||{}),...fd,id:draft.id,created:ex?ex.created:now,updated:now,nextAppointment:''};
+  // Órdenes del médico -> pruebas y citas reales, enlazadas a esta visita
+  const rows=(ORD||[]).map(o=>({...o,title:String(o.title||'').trim(),center:String(o.center||'').trim()}));
+  if(rows.some(o=>o.kind==='test'&&!o.title)){toast('Indica el nombre de cada prueba (p. ej. «Análisis de sangre»).',3500);return}
+  const early=rows.filter(o=>o.date&&o.date<rec.date);
+  if(early.length&&!confirm(`Hay ${early.length} prueba(s)/cita(s) con fecha anterior a la visita (${fmt(rec.date)}). ¿Guardar de todas formas?`))return;
+  const ordAppts=rows.map(o=>{const base=S.appts.find(a=>a.id===o.oid)||{id:o.oid,created:now};
+    const r={...base,kind:o.kind,memberId:rec.memberId,date:o.date,time:o.time,fromVisit:rec.id,updated:now};
+    if(o.kind==='test'){r.title=o.title;r.specialty=base.kind==='test'&&base.specialty?base.specialty:testSpec(o.title,rec.specialty);r.center=o.center;r.doctor=base.doctor||'';r.reason=base.reason||('Pedida en '+rec.specialty)}
+    else{delete r.title;r.reason=o.title||'Revisión';r.specialty=rec.specialty;r.doctor=rec.doctor;r.center=o.center||rec.center}
+    return r});
+  const keepIds=new Set(rows.map(o=>o.oid)),dropIds=ordInit.filter(id=>!keepIds.has(id));
+  if(dropIds.length){const nf=S.files.filter(f=>dropIds.includes(f.apptId)).length;
+    if(!confirm(`Vas a quitar ${dropIds.length} prueba(s)/cita(s)${nf?` con ${nf} documento(s)`:''}. ¿Continuar?`))return}
+  const volRecs=[],volBlobs=[];
+  rows.forEach(o=>o.vol.forEach(d=>{volRecs.push({id:d.id,apptId:o.oid,memberId:rec.memberId,category:'Volante',name:d.name,mime:d.mime,size:d.size,added:d.added,updated:now,uploaded:false});volBlobs.push({id:d.id,blob:d.blob})}));
+  const firstRev=ordAppts.filter(a=>a.kind==='review').sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'))[0];
+  rec.nextApptId=firstRev?firstRev.id:'';
   const recs=draft.docs.map(d=>{const cur=S.files.find(x=>x.id===d.id)||{};return {id:d.id,visitId:rec.id,memberId:rec.memberId,category:d.category,name:d.name,mime:d.mime,size:d.size,added:d.added,updated:now,path:cur.path||d.path,uploaded:!!(cur.uploaded||d.uploaded)}});
   const newBlobs=draft.docs.filter(d=>d.isNew).map(d=>({id:d.id,blob:d.blob}));
   const btn=form.querySelector('[type=submit]');btn.disabled=true;btn.textContent='Guardando…';
@@ -960,43 +1068,92 @@ async function saveVisit(form){
     await putMany('blobs',newBlobs);
     await putMany('visits',[rec]);
     await putMany('files',recs);
+    await putMany('appts',ordAppts);await putMany('blobs',volBlobs);await putMany('files',volRecs);
     if(draft.removed.length)await tombstone('files',draft.removed);
   }catch(e){alert('No se pudo guardar: '+errMsg(e));btn.disabled=false;btn.textContent='Guardar visita';return}
+  const ordIds=new Set(ordAppts.map(a=>a.id));
+  S.appts=S.appts.filter(a=>!ordIds.has(a.id)).concat(ordAppts);
+  volBlobs.forEach(b=>S.blobs.set(b.id,b.blob));S.files=S.files.concat(volRecs);
+  for(const id of dropIds)await deleteAppt(id,true);
+  const consume=draft.consume||[];
   const fromAppt=draft.fromAppt,recIds=new Set(recs.map(r=>r.id));
   newBlobs.forEach(b=>S.blobs.set(b.id,b.blob));
   S.visits=S.visits.filter(x=>x.id!==rec.id).concat(rec);
   S.files=S.files.filter(f=>f.visitId!==rec.id&&!recIds.has(f.id)&&!draft.removed.includes(f.id)).concat(recs);
-  if(fromAppt)await deleteAppt(fromAppt,true); // los volantes ya han pasado a la visita
+  if(fromAppt)await deleteAppt(fromAppt,true); // volantes y resultados ya han pasado a la visita
+  // Las pruebas realizadas se conservan (quedan como «realizada» en la visita que las pidió); sus resultados ya están en esta visita
+  if(consume.length){const ups=S.appts.filter(a=>consume.includes(a.id)).map(a=>({...a,resultVisit:rec.id,updated:Date.now()}));await putMany('appts',ups);S.appts=S.appts.map(a=>ups.find(u=>u.id===a.id)||a)}
   if(S.sel!=='all')S.sel=rec.memberId;
-  S.open.add(rec.id);closeModal();markChange();render();toast(ex?'Visita actualizada':'Visita guardada');
+  S.open.add(rec.id);closeModal();markChange();render();
+  toast((ex?'Visita actualizada':'Visita guardada')+(ordAppts.length?` · ${ordAppts.length} prueba(s)/cita(s) en Citas`:''),3500);
 }
+function ordersText(v){
+  const o=S.appts.filter(a=>a.fromVisit===v.id).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'));
+  const parts=o.map(a=>{const rv=a.resultVisit&&S.visits.find(x=>x.id===a.resultVisit);const st=a.kind==='test'&&a.status==='done'?'realizada'+(a.doneDate?' '+fmt(a.doneDate):'')+(rv?' · resultado en la visita del '+fmt(rv.date):''):a.date?fmt(a.date)+(a.time?' '+a.time:''):'sin cita';
+    return (a.kind==='test'?(a.title||'Prueba'):'Revisión'+(a.reason&&a.reason!=='Revisión'?' ('+a.reason+')':''))+' — '+st});
+  if(!o.length&&v.nextAppointment)parts.push('Revisión — '+fmt(v.nextAppointment));
+  return parts.join('\n');
+}
+/* Cita enlazada a una visita (la "próxima cita" que dio el médico) */
+function linkedAppt(v){return v&&v.nextApptId?S.appts.find(a=>a.id===v.nextApptId)||null:null}
 async function saveAppt(form){
   const fd=Object.fromEntries(new FormData(form));for(const k in fd)fd[k]=String(fd[k]).trim();
   fd.specialty=resolveSpec(fd.specialty,fd.specialtyNew);delete fd.specialtyNew;
-  if(!fd.memberId||!fd.date||!fd.specialty){if(!fd.specialty)toast('Elige o escribe la especialidad.');return}
+  if(fd.kind==='test'){if(!fd.title){toast('Indica el nombre de la prueba.');return}if(!fd.specialty)fd.specialty=testSpec(fd.title)}
+  if(!fd.kind)delete fd.kind;
+  if(!fd.memberId||(!fd.kind&&!fd.date)||!fd.specialty){if(!fd.specialty)toast('Elige o escribe la especialidad.');return}
   const id=draft.id,ex=S.appts.find(x=>x.id===id),now=Date.now();
   const rec={...(ex||{}),...fd,id,created:ex?ex.created:now,updated:now};
   const recs=draft.docs.map(d=>{const cur=S.files.find(x=>x.id===d.id)||{};return {id:d.id,apptId:id,memberId:rec.memberId,category:d.category,name:d.name,mime:d.mime,size:d.size,added:d.added,updated:now,path:cur.path||d.path,uploaded:!!(cur.uploaded||d.uploaded)}});
   const newBlobs=draft.docs.filter(d=>d.isNew).map(d=>({id:d.id,blob:d.blob}));
   const fromVisit=form.dataset.fromvisit,fv=fromVisit&&S.visits.find(v=>v.id===fromVisit);
+  if(fv)rec.fromVisit=fromVisit;
   const btn=form.querySelector('[type=submit]');btn.disabled=true;btn.textContent='Guardando…';
   try{
     await putMany('blobs',newBlobs);await putMany('appts',[rec]);await putMany('files',recs);
     if(draft.removed.length)await tombstone('files',draft.removed);
-    if(fv)await putMany('visits',[{...fv,nextAppointment:'',updated:now}]); // la revisión pasa a ser una cita
+    if(fv)await putMany('visits',[{...fv,nextAppointment:'',nextApptId:id,updated:now}]); // la revisión pasa a ser una cita
   }catch(e){alert('No se pudo guardar: '+errMsg(e));btn.disabled=false;btn.textContent='Guardar cita';return}
   newBlobs.forEach(b=>S.blobs.set(b.id,b.blob));
   const recIds=new Set(recs.map(r=>r.id));
   S.files=S.files.filter(f=>f.apptId!==id&&!recIds.has(f.id)&&!draft.removed.includes(f.id)).concat(recs);
-  if(fv)S.visits=S.visits.map(v=>v.id===fromVisit?{...fv,nextAppointment:'',updated:now}:v);
+  if(fv){rec.fromVisit=fromVisit;S.visits=S.visits.map(v=>v.id===fromVisit?{...fv,nextAppointment:'',nextApptId:id,updated:now}:v)}
   S.appts=S.appts.filter(x=>x.id!==id).concat(rec);
-  const [y,m]=rec.date.split('-').map(Number);CAL.y=y;CAL.m=m-1;S.view='appts';
-  closeModal();markChange();render();toast(ex?'Cita actualizada':'Cita guardada');
+  if(rec.date){const [y,m]=rec.date.split('-').map(Number);CAL.y=y;CAL.m=m-1}S.view='appts';
+  closeModal();markChange();render();toast(ex?'Guardado':'Añadido a Citas');
+}
+/* --- Prueba realizada: fecha y resultado --- */
+function resultModal(id){
+  const a=S.appts.find(x=>x.id===id);if(!a)return;
+  const defCat=/analis|analit|sangre|orina/.test(specKey(a.title))?'Análisis':'Prueba / Imagen';
+  draft={id,docs:testResults(a).map(f=>({...f})),removed:[],kind:'result'};
+  openModal(`<form id="rf"><header class="mh"><h2>${esc(a.title||'Prueba')} · realizada</h2><button type="button" class="x" data-act="closeModal" aria-label="Cerrar">×</button></header>
+  <div class="mb"><div class="g2"><label>Fecha en que te la hiciste<input type="date" name="doneDate" value="${esc(a.doneDate||(a.date&&a.date<=today()?a.date:today()))}"></label></div>
+    <fieldset class="docbox"><legend>Resultado (PDF o foto)</legend>
+      <div class="addrow">${[defCat,...['Análisis','Prueba / Imagen','Informe'].filter(k=>k!==defCat)].map(k=>`<button type="button" class="btn sm add" style="--c:${catColor(k)}" data-act="addDoc" data-id="${esc(k)}">+ ${esc(k)}</button>`).join('')}</div>
+      <p class="hint">Si aún no tienes el resultado, puedes guardarla como realizada y añadirlo más tarde.</p>
+      <div id="draftDocs"></div><input type="file" id="fileIn" accept="application/pdf,image/*" multiple hidden></fieldset></div>
+  <footer class="mf">${a.status==='done'?'<button type="button" class="btn ghost" data-act="undoDone">Marcar como no realizada</button>':''}<span class="sp"></span><button type="button" class="btn" data-act="closeModal">Cancelar</button><button class="btn primary" type="submit">Guardar</button></footer></form>`);
+  renderDraft();
+}
+async function saveResult(form,undo){
+  const a=S.appts.find(x=>x.id===draft.id);if(!a)return;
+  const now=Date.now(),dd=form.querySelector('[name=doneDate]').value;
+  const rec=undo?{...a,status:'',doneDate:'',updated:now}:{...a,status:'done',doneDate:dd||today(),updated:now};
+  const recs=draft.docs.map(d=>{const cur=S.files.find(x=>x.id===d.id)||{};return {id:d.id,apptId:a.id,memberId:a.memberId,category:d.category,name:d.name,mime:d.mime,size:d.size,added:d.added,updated:now,path:cur.path||d.path,uploaded:!!(cur.uploaded||d.uploaded)}});
+  const newBlobs=draft.docs.filter(d=>d.isNew).map(d=>({id:d.id,blob:d.blob}));
+  try{await putMany('blobs',newBlobs);await putMany('appts',[rec]);await putMany('files',recs);if(draft.removed.length)await tombstone('files',draft.removed)}
+  catch(e){alert('No se pudo guardar: '+errMsg(e));return}
+  newBlobs.forEach(b=>S.blobs.set(b.id,b.blob));
+  const ids=new Set(recs.map(r=>r.id));
+  S.files=S.files.filter(f=>!ids.has(f.id)&&!draft.removed.includes(f.id)).concat(recs);
+  S.appts=S.appts.map(x=>x.id===a.id?rec:x);
+  closeModal();markChange();render();toast(undo?'Marcada como pendiente':recs.length?'Prueba realizada · resultado guardado':'Prueba marcada como realizada');
 }
 async function deleteAppt(id,silent){
   const a=S.appts.find(x=>x.id===id);if(!a)return;
   const fs=S.files.filter(f=>f.apptId===id);
-  if(!silent&&!confirm(`¿Eliminar la cita de ${a.specialty} del ${fmt(a.date)}${fs.length?` y sus ${fs.length} volante(s)/documento(s)`:''}?`))return;
+  if(!silent&&!confirm(`¿Eliminar ${a.kind==='test'?'la prueba':'la cita'} «${apptTitle(a)}»${a.date?' del '+fmt(a.date):''}${fs.length?` y sus ${fs.length} documento(s)`:''}?`))return;
   try{await tombstone('files',fs.map(f=>f.id));await tombstone('appts',[id])}catch(e){alert(errMsg(e));return}
   S.files=S.files.filter(f=>f.apptId!==id);
   S.appts=S.appts.filter(x=>x.id!==id);
@@ -1182,7 +1339,7 @@ function buildSummary(pathOf,linkNote){
     if(!vs.length)rows.push('<p class="m">Sin visitas registradas.</p>');
     for(const v of vs){
       const docs=S.files.filter(f=>f.visitId===v.id);
-      rows.push(`<div class="v"><div class="h">${fmt(v.date)} · ${esc(v.specialty)}</div><div class="m">${esc([v.doctor,v.center].filter(Boolean).join(' · '))}</div><dl>${fld('Motivo',v.reason)}${fld('Diagnóstico',v.diagnosis)}${fld('Tratamiento / medicación',v.treatment)}${fld('Próxima cita',fmt(v.nextAppointment))}${fld('Notas',v.notes)}</dl>${docs.length?`<dt>Documentos</dt><ul>${docs.map(f=>`<li>${esc(f.category)}: ${pathOf[f.id]?`<a href="${esc(encodeURI(pathOf[f.id]))}">${esc(f.name)}</a>`:esc(f.name)}</li>`).join('')}</ul>`:''}</div>`);
+      rows.push(`<div class="v"><div class="h">${fmt(v.date)} · ${esc(v.specialty)}</div><div class="m">${esc([v.doctor,v.center].filter(Boolean).join(' · '))}</div><dl>${fld('Motivo',v.reason)}${fld('Diagnóstico',v.diagnosis)}${fld('Tratamiento / medicación',v.treatment)}${fld('Pruebas y citas indicadas',ordersText(v))}${fld('Notas',v.notes)}</dl>${docs.length?`<dt>Documentos</dt><ul>${docs.map(f=>`<li>${esc(f.category)}: ${pathOf[f.id]?`<a href="${esc(encodeURI(pathOf[f.id]))}">${esc(f.name)}</a>`:esc(f.name)}</li>`).join('')}</ul>`:''}</div>`);
     }
   }
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Historia Clínica Familiar — Resumen</title><style>body{font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#1b2a30;background:#fff;max-width:900px;margin:24px auto;padding:0 16px}h1{font-size:22px;margin-bottom:0}h2{margin-top:36px;border-bottom:2px solid #0f766e;padding-bottom:4px}h2 small{font-weight:400;color:#5f7178;font-size:14px}.v{border:1px solid #dde4e7;border-radius:8px;padding:10px 14px;margin:10px 0;break-inside:avoid}.h{font-weight:700}.m{color:#5f7178}dl{margin:4px 0}dt{font-weight:700;color:#5f7178;font-size:11.5px;text-transform:uppercase;margin-top:6px}dd{margin:0;white-space:pre-wrap}ul{margin:2px 0;padding-left:20px}a{color:#0f766e}</style></head><body><h1>Historia Clínica Familiar</h1><p class="m">Resumen generado el ${dmy(Date.now())} a las ${hhmm(Date.now())}. ${esc(linkNote)}</p>${rows.join('')}</body></html>`;
@@ -1234,7 +1391,14 @@ const actions={
   toggle:id=>{S.open.has(id)?S.open.delete(id):S.open.add(id);renderList()},
   openFile:id=>{const f=S.files.find(x=>x.id===id);if(f)viewFile(f)},
   dlFile:id=>{const f=S.files.find(x=>x.id===id);if(f)dlFile(f)},
-  closeModal:()=>{if(draft&&draft.docs.some(d=>d.isNew)&&!confirm('Hay documentos añadidos sin guardar. ¿Cerrar igualmente?'))return;closeModal()},
+  ordAdd:k=>{if(!ORD)return;ORD.push(newOrd(k));renderOrders();const r=[...document.querySelectorAll('#ordList .orow')].pop();if(r){if(r.scrollIntoView)r.scrollIntoView({block:'center'});const i=r.querySelector('[data-ofield=title]');if(i&&!IOS&&k==='test')i.focus()}},
+  ordDel:oid=>{if(!ORD)return;const o=ORD.find(x=>x.oid===oid);if(o&&o.vol.length&&!confirm('Esta fila tiene volantes añadidos. ¿Quitarla?'))return;ORD=ORD.filter(x=>x.oid!==oid);renderOrders()},
+  ordVol:oid=>{ordPending=oid;$('#ordFileIn').click()},
+  ordVolRm:id=>{const [oid,fid]=id.split('|');const o=ORD&&ORD.find(x=>x.oid===oid);if(o){o.vol=o.vol.filter(d=>d.id!==fid);renderOrders()}},
+  markDone:id=>{closeModal();resultModal(id)},
+  undoDone:()=>{const f=$('#rf');if(f)saveResult(f,true)},
+  addTest:()=>apptModal(null,'',{kind:'test',memberId:S.sel!=='all'?S.sel:(S.members.length===1?S.members[0].id:''),date:''}),
+  closeModal:()=>{if($('#vf')&&ORD&&ORD.some(o=>o.vol.length)&&!confirm('Hay volantes añadidos sin guardar. ¿Cerrar igualmente?'))return;if(draft&&draft.docs.some(d=>d.isNew)&&!confirm('Hay documentos añadidos sin guardar. ¿Cerrar igualmente?'))return;closeModal()},
   addDoc:cat=>{pendingCat=cat;$('#fileIn').click()},
   openDraft:id=>{const d=draft&&draft.docs.find(x=>x.id===id);if(!d)return;if(d.blob&&isImg(d))viewImage(d,d.blob);else if(d.blob)openBlob(d.blob,d.name);else viewFile(d)},
   closeViewer:()=>closeViewer(),
@@ -1266,9 +1430,10 @@ const actions={
   calNext:()=>{CAL.m++;if(CAL.m>11){CAL.m=0;CAL.y++}renderCal()},
   calDay:d=>{CAL.day=CAL.day===d?'':d;renderCal();if(S.view!=='appts'){S.view='appts';renderMain()}else renderList()},
   calAll:()=>{CAL.day='';renderCal();renderList()},
+  nextAppt:id=>{visitModal(id);setTimeout(()=>{const b=$('#nextBox');if(b){if(b.scrollIntoView)b.scrollIntoView({block:'center'});const i=b.querySelector('[name=nextDate]');if(i&&!IOS)i.focus()}},50)},
   revToAppt:id=>{
     const v=S.visits.find(x=>x.id===id);if(!v)return;
-    apptModal(null,'',{memberId:v.memberId,date:v.nextAppointment,specialty:v.specialty,doctor:v.doctor,center:v.center,reason:'Revisión'},id);
+    apptModal(null,'',{kind:'review',memberId:v.memberId,date:v.nextAppointment,specialty:v.specialty,doctor:v.doctor,center:v.center,reason:'Revisión'},id);
   },
   goAppt:id=>{
     const v=S.visits.find(x=>x.id===id);if(!v)return;
@@ -1301,12 +1466,18 @@ const actions={
 };
 document.addEventListener('click',e=>{const s=e.target.closest('#calBox>summary');if(s&&window.innerWidth>760)e.preventDefault()},true);
 document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(!a)return;const fn=actions[a.dataset.act];if(fn){e.preventDefault();fn(a.dataset.id,a)}});
-document.addEventListener('submit',e=>{e.preventDefault();if(e.target.id==='mf')saveMember(e.target);else if(e.target.id==='vf')saveVisit(e.target);else if(e.target.id==='lf')submitListItem(e.target);else if(e.target.id==='af')saveAppt(e.target)});
-document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value.trim();renderList()}});
+document.addEventListener('submit',e=>{e.preventDefault();if(e.target.id==='mf')saveMember(e.target);else if(e.target.id==='vf')saveVisit(e.target);else if(e.target.id==='lf')submitListItem(e.target);else if(e.target.id==='af')saveAppt(e.target);else if(e.target.id==='rf')saveResult(e.target)});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.id==='q'){S.q=t.value.trim();renderList()}
+  else if(t.dataset&&t.dataset.ofield&&ORD){const o=ORD.find(x=>x.oid===t.dataset.oid);if(o&&t.dataset.ofield!=='kind')o[t.dataset.ofield]=t.value}
+});
 document.addEventListener('change',e=>{
   const t=e.target;
   if(t.id==='spec'){S.spec=t.value;renderList()}
   else if(t.id==='fileIn'&&draft){for(const f of t.files)draft.docs.push({id:uid(),category:pendingCat,name:f.name||('foto_'+Date.now()+'.jpg'),mime:f.type||'',size:f.size,added:Date.now(),blob:f,isNew:true});t.value='';renderDraft()}
+  else if(t.dataset&&t.dataset.ofield&&ORD){const o=ORD.find(x=>x.oid===t.dataset.oid);if(o){if(t.dataset.ofield==='kind'){const was=o.kind;o.kind=t.value;if(was!==o.kind&&(o.title===''||o.title==='Revisión'))o.title=o.kind==='review'?'Revisión':'';renderOrders()}else o[t.dataset.ofield]=t.value}}
+  else if(t.id==='ordFileIn'&&ORD){const o=ORD.find(x=>x.oid===ordPending);if(o)for(const f of t.files)o.vol.push({id:uid(),name:f.name||('volante_'+Date.now()+'.jpg'),mime:f.type||'',size:f.size,added:Date.now(),blob:f});t.value='';renderOrders()}
   else if(t.dataset&&t.dataset.specsel!==undefined){const i=t.parentElement.querySelector('[name=specialtyNew]');const on=t.value==='__new';i.hidden=!on;i.required=on;if(on)i.focus();else i.value=''}
   else if(t.dataset&&t.dataset.filecat){changeFileCat(t.dataset.filecat,t.value)}
   else if(t.dataset&&t.dataset.draftcat&&draft){const d=draft.docs.find(x=>x.id===t.dataset.draftcat);if(d){d.category=t.value;t.style.setProperty('--c',catColor(t.value))}}
